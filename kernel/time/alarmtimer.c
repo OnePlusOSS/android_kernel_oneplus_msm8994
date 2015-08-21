@@ -25,8 +25,11 @@
 #include <linux/posix-timers.h>
 #include <linux/workqueue.h>
 #include <linux/freezer.h>
+#ifdef VENDOR_EDIT
+/* shankai@bsp.driver 2015-4-2  Add begin for power up alarm */
+#define ALARM_DELTA 0
+#endif  /*VENDOR_EDIT */
 
-#define ALARM_DELTA 120
 
 /**
  * struct alarm_base - Alarm timer bases

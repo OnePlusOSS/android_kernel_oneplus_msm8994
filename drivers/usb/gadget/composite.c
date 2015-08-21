@@ -1844,7 +1844,7 @@ composite_suspend(struct usb_gadget *gadget)
 
 	cdev->suspended = 1;
 
-	usb_gadget_vbus_draw(gadget, 2);
+	//usb_gadget_vbus_draw(gadget, 2);
 }
 
 static void

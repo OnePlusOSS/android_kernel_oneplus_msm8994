@@ -248,11 +248,30 @@ ssize_t persistent_ram_ecc_string(struct persistent_ram_zone *prz,
 	return ret;
 }
 
+#ifdef VENDOR_EDIT  // add by xcb for ramoops 2015-03-31
+void *memcpy_pstore(void *dest, const void *src, size_t count)
+{
+    char *tmp = dest;
+    const char *s = src;
+
+    while (count--)
+        *tmp++ = *s++;
+    return dest;
+}
+#endif /* VENDOR_EDIT */
+
 static void notrace persistent_ram_update(struct persistent_ram_zone *prz,
 	const void *s, unsigned int start, unsigned int count)
 {
 	struct persistent_ram_buffer *buffer = prz->buffer;
+
+#ifdef VENDOR_EDIT  // modify by xcb for ramoops 2015-03-31
+	memcpy_pstore(buffer->data + start, s, count);
+#else
 	memcpy(buffer->data + start, s, count);
+#endif /* VENDOR_EDIT */
+
+
 	persistent_ram_update_ecc(prz, start, count);
 }
 
@@ -275,8 +294,13 @@ void persistent_ram_save_old(struct persistent_ram_zone *prz)
 	}
 
 	prz->old_log_size = size;
+#ifdef VENDOR_EDIT  // modify by yangrujin@bsp for ramoops memcpy addr alignment 2015-05-27
+	memcpy_pstore(prz->old_log, &buffer->data[start], size - start);
+	memcpy_pstore(prz->old_log + size - start, &buffer->data[0], start);
+#else
 	memcpy(prz->old_log, &buffer->data[start], size - start);
 	memcpy(prz->old_log + size - start, &buffer->data[0], start);
+#endif
 }
 
 int notrace persistent_ram_write(struct persistent_ram_zone *prz,

@@ -330,8 +330,11 @@ struct device_node *of_batterydata_get_best_profile(
 		pr_err("failed to retrieve resistance value rc=%d\n", rc);
 		return ERR_PTR(-ENOSYS);
 	}
-
-	batt_id_kohm = ret.intval / 1000;
+#ifdef VENDOR_EDIT
+	batt_id_kohm = ret.intval ;
+#else
+    batt_id_kohm = ret.intval / 1000;
+#endif
 
 	/* read battery id range percentage for best profile */
 	rc = of_property_read_u32(batterydata_container_node,
@@ -365,8 +368,15 @@ struct device_node *of_batterydata_get_best_profile(
 			if (rc)
 				continue;
 			for (i = 0; i < batt_ids.num; i++) {
-				delta = abs(batt_ids.kohm[i] - batt_id_kohm);
-				limit = (batt_ids.kohm[i] * id_range_pct) / 100;
+#ifdef VENDOR_EDIT
+				delta = abs(batt_ids.kohm[i]*1000 - batt_id_kohm);
+                limit = (batt_ids.kohm[i]*1000 * id_range_pct)/100 ;
+
+#else
+                delta = abs(batt_ids.kohm[i] - batt_id_kohm);
+                limit = (batt_ids.kohm[i] * id_range_pct) / 100;
+
+#endif
 				in_range = (delta <= limit);
 				/*
 				 * Check if the delta is the lowest one
@@ -382,11 +392,37 @@ struct device_node *of_batterydata_get_best_profile(
 			}
 		}
 	}
+#ifdef VENDOR_EDIT
+	if (best_node == NULL) {
+		pr_err("Go to set default battery cure\n");
+		for_each_child_of_node(batterydata_container_node, node){
+		rc = of_property_read_string(node, "qcom,battery-type",
+							&battery_type);
+			if (!rc && strcmp(battery_type, "Unknown Battery") == 0) {
+				best_node = node;
+				return best_node;
+			}
 
+		}
+	}
+#else
 	if (best_node == NULL) {
 		pr_err("No battery data found\n");
 		return best_node;
 	}
+#endif
+#ifdef VENDOR_EDIT
+/* check that profile id is in range of the measured batt_id */
+if (abs(best_id_kohm*1000 - batt_id_kohm) >
+		((best_id_kohm*1000 * id_range_pct) / 100)) {
+	pr_err("out of range: profile id %d batt id %d pct %d",
+		best_id_kohm, batt_id_kohm, id_range_pct);
+	return NULL;
+}
+
+
+#else
+
 
 	/* check that profile id is in range of the measured batt_id */
 	if (abs(best_id_kohm - batt_id_kohm) >
@@ -395,7 +431,7 @@ struct device_node *of_batterydata_get_best_profile(
 			best_id_kohm, batt_id_kohm, id_range_pct);
 		return NULL;
 	}
-
+#endif
 	rc = of_property_read_string(best_node, "qcom,battery-type",
 							&battery_type);
 	if (!rc)

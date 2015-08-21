@@ -17,6 +17,7 @@
 #include <linux/io.h>
 #include <linux/platform_device.h>
 #include <media/v4l2-subdev.h>
+#include <linux/workqueue.h>
 #include <media/msm_cam_sensor.h>
 #include <soc/qcom/camera2.h>
 #include "msm_sd.h"
@@ -37,9 +38,16 @@
 #define MSM_CCI_WRITE_DATA_PAYLOAD_SIZE_11 11
 #define BURST_MIN_FREE_SIZE 8
 
+enum cci_i2c_sync {
+	MSM_SYNC_DISABLE,
+	MSM_SYNC_ENABLE,
+};
+
+
 enum cci_i2c_queue_t {
 	QUEUE_0,
 	QUEUE_1,
+	QUEUE_INVALID,
 };
 
 struct msm_camera_cci_client {
@@ -63,10 +71,15 @@ enum msm_cci_cmd_type {
 	MSM_CCI_I2C_READ,
 	MSM_CCI_I2C_WRITE,
 	MSM_CCI_I2C_WRITE_SEQ,
+	MSM_CCI_I2C_WRITE_ASYNC,
 	MSM_CCI_GPIO_WRITE,
+	MSM_CCI_I2C_WRITE_SYNC,
+	MSM_CCI_I2C_WRITE_SYNC_BLOCK,
 };
 
 struct msm_camera_cci_wait_sync_cfg {
+	uint16_t cid;
+	int16_t csid;
 	uint16_t line;
 	uint16_t delay;
 };
@@ -104,9 +117,14 @@ struct msm_camera_cci_ctrl {
 
 struct msm_camera_cci_master_info {
 	uint32_t status;
+	atomic_t q_free[NUM_QUEUES];
+	uint8_t q_lock[NUM_QUEUES];
 	uint8_t reset_pending;
 	struct mutex mutex;
 	struct completion reset_complete;
+	struct mutex mutex_q[NUM_QUEUES];
+	struct completion report_q[NUM_QUEUES];
+	atomic_t done_pending[NUM_QUEUES];
 };
 
 struct msm_cci_clk_params_t {
@@ -142,6 +160,7 @@ struct cci_device {
 	enum msm_cci_state_t cci_state;
 	uint32_t num_clk;
 	uint32_t num_clk_cases;
+	struct mutex mutex;
 
 	struct clk *cci_clk[CCI_NUM_CLK_MAX];
 	struct msm_camera_cci_i2c_queue_info
@@ -158,6 +177,9 @@ struct cci_device {
 	uint32_t cci_clk_src;
 	uint8_t payload_size;
 	uint8_t support_seq_write;
+	struct workqueue_struct *write_wq[MASTER_MAX];
+	struct msm_camera_cci_wait_sync_cfg cci_wait_sync_cfg;
+	uint8_t valid_sync;
 };
 
 enum msm_cci_i2c_cmd_type {
@@ -191,6 +213,14 @@ enum msm_cci_gpio_cmd_type {
 	CCI_GPIO_REPEAT_CMD,
 	CCI_GPIO_CONTINUE_CMD,
 	CCI_GPIO_INVALID_CMD,
+};
+
+struct cci_write_async {
+	struct cci_device *cci_dev;
+	struct msm_camera_cci_ctrl c_ctrl;
+	enum cci_i2c_queue_t queue;
+	struct work_struct work;
+	enum cci_i2c_sync sync_en;
 };
 
 #ifdef CONFIG_MSM_CCI

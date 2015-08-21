@@ -15,7 +15,10 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 
-int msm_show_resume_irq_mask;
+#ifdef VENDOR_EDIT
+/* Zhonglan.sun@ProDrv.CHG,add 2015/1/7  Add for wakeup analysis */
+int msm_show_resume_irq_mask =1;
+#endif /* VENDOR_EDIT */
 
 module_param_named(
 	debug_mask, msm_show_resume_irq_mask, int, S_IRUGO | S_IWUSR | S_IWGRP

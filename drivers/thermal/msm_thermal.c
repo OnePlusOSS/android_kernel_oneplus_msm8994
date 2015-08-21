@@ -2990,7 +2990,9 @@ static int hotplug_notify(enum thermal_trip_type type, int temp, void *data)
 
 	pr_info_ratelimited("%s reach temp threshold: %d\n",
 			       cpu_node->sensor_type, temp);
-
+#ifdef VENDOR_EDIT
+	pr_debug("%s reach temp threshold: %d\n", cpu_node->sensor_type, temp);
+#endif
 	if (!(msm_thermal_info.core_control_mask & BIT(cpu_node->cpu)))
 		return 0;
 	switch (type) {

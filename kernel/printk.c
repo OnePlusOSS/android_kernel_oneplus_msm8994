@@ -45,6 +45,7 @@
 #include <linux/poll.h>
 #include <linux/irq_work.h>
 #include <linux/utsname.h>
+#include <linux/rtc.h>
 
 #include <asm/uaccess.h>
 
@@ -53,6 +54,11 @@
 
 #ifdef CONFIG_EARLY_PRINTK_DIRECT
 extern void printascii(char *);
+#endif
+
+#ifdef VENDOR_EDIT
+static bool print_wall_time = 0;
+module_param_named(print_wall_time, print_wall_time, bool, S_IRUGO | S_IWUSR);
 #endif
 
 /* printk's without a loglevel use this.. */
@@ -406,6 +412,13 @@ static void log_oops_store(struct log *msg)
 }
 #endif
 
+//add by jiachenghui for fix kmsg timestamp error
+#ifdef VENDOR_EDIT
+enum log_flags prevflag = LOG_NEWLINE;
+int __getnstimeofday(struct timespec *ts);
+#endif //VENDOR_EDIT
+//end add by jiachenghui for fix kmsg timestamp error
+
 /* insert record into the buffer, discard old ones, update heads */
 static void log_store(int facility, int level,
 		      enum log_flags flags, u64 ts_nsec,
@@ -414,6 +427,75 @@ static void log_store(int facility, int level,
 {
 	struct log *msg;
 	u32 size, pad_len;
+//add by jch for jiachenghui for fix kmsg timestamp error
+#ifdef VENDOR_EDIT
+	static bool time_showed ;
+	static char timebuf[LOG_LINE_MAX];
+	static char testbuf[64];
+       size_t tm_pre, tmp_len;
+	size_t text_lengh;
+	char *tm_text = timebuf;
+	char *next;
+	size_t len = 0;
+	bool prefix = true;
+	unsigned long rem_usec;
+	struct timespec tspec;
+	struct rtc_time tm;
+	u64 tms_nsec;
+
+	tms_nsec = local_clock();
+	if(print_wall_time && (tms_nsec > 20)){
+		__getnstimeofday(&tspec);
+		rem_usec = tspec.tv_nsec;
+		tspec.tv_sec += 8*60*60; //Trasfer to Beijing time, UTC + 8
+		rtc_time_to_tm(tspec.tv_sec, &tm);
+
+		if ((prevflag & LOG_CONT) && !((flags&0x1f) & LOG_PREFIX))
+			prefix = false;
+
+		if ( (flags&0x1f)  & LOG_CONT) {
+			if ((prevflag & LOG_CONT) && !(prevflag & LOG_NEWLINE))
+				prefix = false;
+		}
+
+		if (prefix){
+		   tmp_len = text_len;
+		   do {
+			   if(tmp_len+1 <= 0){
+					len--;
+					break;
+			    }
+			    next = memchr(text, '\n', text_len);
+			    if (next) {
+					text_lengh = next - text;
+					next++;
+					tmp_len -= next - text;
+
+			    } else {
+					text_lengh = tmp_len;
+			    }
+			    if (sprintf(testbuf, "[%02d%02d%02d_%02d:%02d:%02d.%06lu]@%d ", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,tm.tm_hour, tm.tm_min, tm.tm_sec,rem_usec / 1000,smp_processor_id() ) + text_lengh + 1 >= LOG_LINE_MAX - len)
+	                          break;
+			    time_showed = true;
+	                  tm_pre = sprintf(tm_text+len, "[%02d%02d%02d_%02d:%02d:%02d.%06lu]@%d ",tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,tm.tm_hour, tm.tm_min, tm.tm_sec,rem_usec / 1000,smp_processor_id());
+	                  len += tm_pre;
+	                  memcpy(tm_text + len, text, text_lengh);
+	                  len += text_lengh;
+			    if (next){
+			        tm_text[len++] = '\n';
+			    }
+			    text = next;
+		      } while (text);
+	            text = tm_text;
+		     text_len = len;
+		}
+		prevflag =  flags & 0x1f;
+	}
+	else{
+		time_showed = false;
+	}
+#endif //VENDOR_EDIT
+//end add by jiachenghui for fix kmsg timestamp error
 
 	/* number of '\0' padding bytes to next message */
 	size = sizeof(struct log) + text_len + dict_len;
@@ -464,6 +546,12 @@ static void log_store(int facility, int level,
 		msg->ts_nsec = ts_nsec;
 	else
 		msg->ts_nsec = local_clock();
+//add by jch for jiachenghui for fix kmsg timestamp error
+#ifdef VENDOR_EDIT
+	if(time_showed)
+		msg->ts_nsec = -1;
+#endif //VENDOR_EDIT
+//add by jch for jiachenghui for fix kmsg timestamp error
 	memset(log_dict(msg) + dict_len, 0, pad_len);
 	msg->len = sizeof(struct log) + text_len + dict_len + pad_len;
 
@@ -959,6 +1047,16 @@ module_param(ignore_loglevel, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(ignore_loglevel, "ignore loglevel setting, to"
 	"print all kernel messages to the console.");
 
+static int __init ftm_console_silent_setup(char *str)
+{
+	printk(KERN_INFO "ftm_silent_log\n");
+	console_silent();
+
+	return 0;
+}
+
+early_param("ftm_console_silent", ftm_console_silent_setup);
+
 #ifdef CONFIG_BOOT_PRINTK_DELAY
 
 static int boot_delay; /* msecs delay after each printk during bootup */
@@ -1021,20 +1119,50 @@ static bool printk_time;
 #endif
 module_param_named(time, printk_time, bool, S_IRUGO | S_IWUSR);
 
+void getnstimeofday_no_nsecs(struct timespec *ts);
+
 static size_t print_time(u64 ts, char *buf)
 {
 	unsigned long rem_nsec;
+	struct timespec tspec;
+	struct rtc_time tm;
 
 	if (!printk_time)
 		return 0;
+
+//add by jiachenghui for fix kmsg timestamp error
+#ifdef VENDOR_EDIT
+	if(ts == -1)
+		return 0;
+#endif
+//end add by jiachenghui for fix kmsg timestamp error
 
 	rem_nsec = do_div(ts, 1000000000);
 
 	if (!buf)
 		return snprintf(NULL, 0, "[%5lu.000000] ", (unsigned long)ts);
 
-	return sprintf(buf, "[%5lu.%06lu] ",
-		       (unsigned long)ts, rem_nsec / 1000);
+	//Use wll time for DBEUG
+#ifdef VENDOR_EDIT/*if ts < 20, it is not used for showing actual time*/
+	if(print_wall_time && (ts > 20)){
+		getnstimeofday_no_nsecs(&tspec);
+		tspec.tv_sec += 8*60*60; //Trasfer to Beijing time, UTC + 8
+		rtc_time_to_tm(tspec.tv_sec, &tm);
+
+		return sprintf(buf, "[%02d%02d%02d_%02d:%02d:%02d.%06lu]@%d ",
+					tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,tm.tm_hour, tm.tm_min, tm.tm_sec,
+					rem_nsec / 1000,smp_processor_id() );
+	}else{
+		return sprintf(buf, "[%5lu.%06lu]@%d ",
+					(unsigned long)ts, rem_nsec / 1000,smp_processor_id() );
+
+	}
+#else
+	return sprintf(buf, "[%5lu.%06lu]@%d ",
+			(unsigned long)ts, rem_nsec / 1000,smp_processor_id() );
+#endif
+
+
 }
 
 static size_t print_prefix(const struct log *msg, bool syslog, char *buf)
@@ -2630,9 +2758,14 @@ void register_console(struct console *newcon)
 		}
 		break;
 	}
-
-	if (!(newcon->flags & CON_ENABLED))
+#if 0 //del by jiachenghui for unregister uart driver by cmdline, 2015-4-23
+//#ifdef VENDOR_EDIT/* If console is set on cmdline, set uart output.LiWei added. 20150330*/
+	if (!(newcon->flags & CON_ENABLED) ||!console_set_on_cmdline )
 		return;
+#else
+	if(!(newcon->flags & CON_ENABLED))
+		return;
+#endif
 
 	/*
 	 * If we have a bootconsole, and are switching to a real console,

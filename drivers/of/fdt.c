@@ -22,6 +22,7 @@
 #include <linux/libfdt.h>
 #include <linux/debugfs.h>
 #include <linux/serial_core.h>
+#include <linux/module.h>
 
 #include <asm/setup.h>  /* for COMMAND_LINE_SIZE */
 #include <asm/page.h>
@@ -593,11 +594,28 @@ int __init of_flat_dt_match(unsigned long node, const char *const *compat)
 	return of_fdt_match(initial_boot_params, node, compat);
 }
 
+static void __init of_flat_dt_get_project_info(void)
+{
+	const __be32 *prop;
+	const char *name;
+	int hw_ver = 0;
+
+	unsigned long dt_root = of_get_flat_dt_root();
+
+	prop = of_get_flat_dt_prop(dt_root, "qcom,hw-ver", NULL);
+	if (prop)
+		hw_ver = be32_to_cpup(prop);
+
+	name = of_get_flat_dt_prop(dt_root, "qcom,product-name", NULL);
+	pr_info("qcom,product-name: %s hw_ver : %d\n",name,hw_ver);
+}
+
 const char * __init of_flat_dt_get_machine_name(void)
 {
 	const char *name;
 	unsigned long dt_root = of_get_flat_dt_root();
 
+	of_flat_dt_get_project_info();
 	name = of_get_flat_dt_prop(dt_root, "model", NULL);
 	if (!name)
 		name = of_get_flat_dt_prop(dt_root, "compatible", NULL);
@@ -780,6 +798,9 @@ u64 __init dt_mem_next_cell(int s, const __be32 **cellp)
 /**
  * early_init_dt_scan_memory - Look for an parse memory nodes
  */
+static unsigned long ddr_size = 0;
+module_param(ddr_size, ulong, S_IRUGO);
+MODULE_PARM_DESC(ddr_size, "ddr size");
 int __init early_init_dt_scan_memory(unsigned long node, const char *uname,
 				     int depth, void *data)
 {
@@ -819,7 +840,7 @@ int __init early_init_dt_scan_memory(unsigned long node, const char *uname,
 			continue;
 		pr_debug(" - %llx ,  %llx\n", (unsigned long long)base,
 		    (unsigned long long)size);
-
+		ddr_size += size;
 		early_init_dt_add_memory_arch(base, size);
 	}
 

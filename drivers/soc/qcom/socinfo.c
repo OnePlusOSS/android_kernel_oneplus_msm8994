@@ -209,6 +209,7 @@ static union {
 	struct socinfo_v10 v10;
 } *socinfo;
 
+
 static struct msm_soc_info cpu_of_id[] = {
 
 	/* 7x01 IDs */

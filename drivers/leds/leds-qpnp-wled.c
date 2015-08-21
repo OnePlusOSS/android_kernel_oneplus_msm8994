@@ -22,6 +22,9 @@
 #include <linux/err.h>
 #include <linux/delay.h>
 #include <linux/leds-qpnp-wled.h>
+#ifdef VENDOR_EDIT
+#include <linux/boot_mode.h>
+#endif
 
 #define QPNP_IRQ_FLAGS	(IRQF_TRIGGER_RISING | \
 			IRQF_TRIGGER_FALLING | \
@@ -685,6 +688,61 @@ int qpnp_ibb_enable(bool state)
 }
 EXPORT_SYMBOL(qpnp_ibb_enable);
 
+#ifdef VENDOR_EDIT
+/*ykl add  set backlight max current in different ambient lux*/
+
+#define HIGH_CURRENT 20000
+#define NORMAL_CURRENT 16000
+
+static int high_backlight = 0;
+
+static ssize_t qpnp_wled_high_backlight_store(struct device *dev, struct device_attribute *attr,const char *buf,size_t count)
+{
+	struct qpnp_wled *wled = dev_get_drvdata(dev);
+	int data, i, rc, temp;
+	u8 reg;
+
+	if(sscanf(buf,"%d",&high_backlight) != 1)
+		return -EINVAL;
+
+	if(high_backlight)
+		data = HIGH_CURRENT;
+	else
+		data = NORMAL_CURRENT;
+
+	for (i = 0; i < wled->num_strings; i++) {
+		if (data < QPNP_WLED_FS_CURR_MIN_UA)
+			data = QPNP_WLED_FS_CURR_MIN_UA;
+		else if (data > QPNP_WLED_FS_CURR_MAX_UA)
+			data = QPNP_WLED_FS_CURR_MAX_UA;
+
+		rc = qpnp_wled_read_reg(wled, &reg,
+				QPNP_WLED_FS_CURR_REG(wled->sink_base,
+							wled->strings[i]));
+		qpnp_wled_module_en(wled, wled->ctrl_base, 0);
+		if (rc < 0)
+			return rc;
+		reg &= QPNP_WLED_FS_CURR_MASK;
+		temp = data / QPNP_WLED_FS_CURR_STEP_UA;
+		reg |= temp;
+		rc = qpnp_wled_write_reg(wled, &reg,
+				QPNP_WLED_FS_CURR_REG(wled->sink_base,
+							wled->strings[i]));
+		if (rc)
+			return rc;
+	}
+	qpnp_wled_module_en(wled, wled->ctrl_base, 1);
+
+	wled->fs_curr_ua = data;
+	return count;
+}
+
+static ssize_t qpnp_wled_high_backlight_show(struct device *dev, struct device_attribute *attr,char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%d\n", high_backlight);;
+}
+
+#endif
 /* sysfs store function for full scale current in ua*/
 static ssize_t qpnp_wled_fs_curr_ua_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
@@ -705,6 +763,10 @@ static ssize_t qpnp_wled_fs_curr_ua_store(struct device *dev,
 		rc = qpnp_wled_read_reg(wled, &reg,
 				QPNP_WLED_FS_CURR_REG(wled->sink_base,
 							wled->strings[i]));
+		#ifdef VENDOR_EDIT
+		/*ykl add  set backlight max current in different ambient lux*/
+		qpnp_wled_module_en(wled, wled->ctrl_base, 0);
+		#endif
 		if (rc < 0)
 			return rc;
 		reg &= QPNP_WLED_FS_CURR_MASK;
@@ -716,9 +778,12 @@ static ssize_t qpnp_wled_fs_curr_ua_store(struct device *dev,
 		if (rc)
 			return rc;
 	}
+	#ifdef VENDOR_EDIT
+	/*ykl add  set backlight max current in different ambient lux*/
+	qpnp_wled_module_en(wled, wled->ctrl_base, 1);
+	#endif
 
 	wled->fs_curr_ua = data;
-
 	return count;
 }
 
@@ -742,6 +807,10 @@ static struct device_attribute qpnp_wled_attrs[] = {
 	__ATTR(ramp_step, (S_IRUGO | S_IWUSR | S_IWGRP),
 			qpnp_wled_ramp_step_show,
 			qpnp_wled_ramp_step_store),
+	#ifdef VENDOR_EDIT
+	/*ykl add  set backlight max current in different ambient lux*/
+	__ATTR(high_bl_en, (S_IRUGO | S_IWUGO),qpnp_wled_high_backlight_show,qpnp_wled_high_backlight_store),
+	#endif
 };
 
 /* worker for setting wled brightness */
@@ -1437,7 +1506,6 @@ static int qpnp_wled_parse_dt(struct qpnp_wled *wled)
 			"qcom,en-phase-stag");
 	wled->en_cabc = of_property_read_bool(spmi->dev.of_node,
 			"qcom,en-cabc");
-
 	prop = of_find_property(spmi->dev.of_node,
 			"qcom,led-strings-list", &temp_val);
 	if (!prop || !temp_val || temp_val > QPNP_WLED_MAX_STRINGS) {

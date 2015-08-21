@@ -43,5 +43,6 @@ int pil_mss_make_proxy_votes(struct pil_desc *pil);
 void pil_mss_remove_proxy_votes(struct pil_desc *pil);
 int pil_mss_shutdown(struct pil_desc *pil);
 int pil_mss_deinit_image(struct pil_desc *pil);
+//liyunbing@BSP, 2015-05-14, pil load modem fail 
 int __pil_mss_deinit_image(struct pil_desc *pil, bool err_path);
 #endif

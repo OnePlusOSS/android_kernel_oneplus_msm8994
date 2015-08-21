@@ -52,8 +52,10 @@
 
 #define NUM_DCE_PLUG_DETECT 3
 #define NUM_DCE_PLUG_INS_DETECT 5
+
 #define NUM_ATTEMPTS_INSERT_DETECT 25
 #define NUM_ATTEMPTS_TO_REPORT 5
+#define NUM_TO_REPORT_INVALID 10
 
 #define FAKE_INS_LOW 10
 #define FAKE_INS_HIGH 80
@@ -126,9 +128,24 @@
 /* RX_HPH_CNP_WG_TIME increases by 0.24ms */
 #define WCD9XXX_WG_TIME_FACTOR_US	240
 
+#ifdef VENDOR_EDIT
+// Modified begin by MingLiu@MultiMedia.AudioDrv for headset detect on 2014-10-17
+
 #define WCD9XXX_V_CS_HS_MAX 500
+
+#else /* VENDOR_EDIT */
+#define WCD9XXX_V_CS_HS_MAX 1000
+// Modified end by MingLiu@MultiMedia.AudioDrv for headset detect on 2014-10-17
+#endif /* VENDOR_EDIT */
+#ifdef VENDOR_EDIT
+/*wangdongdong@MultiMedia.AudioDrv,2015/06/04,add for headset detect*/
+/*kang change from 20 to 15 for supporting lenove U.S./CTIA headset*/
+#define WCD9XXX_V_CS_NO_MIC 15
+#else
 #define WCD9XXX_V_CS_NO_MIC 5
+#endif
 #define WCD9XXX_MB_MEAS_DELTA_MAX_MV 80
+
 #define WCD9XXX_CS_MEAS_DELTA_MAX_MV 12
 
 #define WCD9XXX_ZDET_ZONE_1 80000
@@ -879,6 +896,10 @@ static void wcd9xxx_report_plug(struct wcd9xxx_mbhc *mbhc, int insertion,
 		mbhc->hph_type = MBHC_HPH_NONE;
 		pr_debug("%s: Reporting removal %d(%x)\n", __func__,
 			 jack_type, mbhc->hph_status);
+		#ifdef VENDOR_EDIT
+			 /*wangdongdong@MultiMedia.AudioDrv, 2015-03-24, Modify for headset uevent*/
+                    switch_set_state(&mbhc->wcd9xxx_sdev,0);
+	        #endif
 		wcd9xxx_jack_report(mbhc, &mbhc->headset_jack, mbhc->hph_status,
 				    WCD9XXX_JACK_MASK);
 		wcd9xxx_set_and_turnoff_hph_padac(mbhc);
@@ -952,6 +973,31 @@ static void wcd9xxx_report_plug(struct wcd9xxx_mbhc *mbhc, int insertion,
 
 		pr_debug("%s: Reporting insertion %d(%x)\n", __func__,
 			 jack_type, mbhc->hph_status);
+	#ifdef VENDOR_EDIT
+    /*wangdongdong@MultiMedia.AudioDrv, 2015-03-24, Modify for headset uevent*/
+              switch(mbhc->current_plug){
+               case PLUG_TYPE_HEADPHONE:
+		       case PLUG_TYPE_HIGH_HPH:
+                    mbhc->mbhc_cfg->headset_type = 0;
+			        switch_set_state(&mbhc->wcd9xxx_sdev,2);
+			        break;
+	           case PLUG_TYPE_GND_MIC_SWAP:
+			        mbhc->mbhc_cfg->headset_type = 0;
+			        switch_set_state(&mbhc->wcd9xxx_sdev,1);
+			        break;
+		       case PLUG_TYPE_HEADSET:
+		            mbhc->mbhc_cfg->headset_type = 1;
+		 	        switch_set_state(&mbhc->wcd9xxx_sdev,1);
+			        break;
+		        default:
+                    mbhc->mbhc_cfg->headset_type = 0;
+			        switch_set_state(&mbhc->wcd9xxx_sdev,0);
+			    break;
+		      }
+              printk("%s: Reporting insertion %d(%x)\n", __func__,
+			 jack_type, mbhc->hph_status);
+	      
+	#endif
 		wcd9xxx_jack_report(mbhc, &mbhc->headset_jack,
 				    mbhc->hph_status, WCD9XXX_JACK_MASK);
 		/*
@@ -2800,7 +2846,6 @@ static void wcd9xxx_hs_insert_irq_extn(struct wcd9xxx_mbhc *mbhc,
 static irqreturn_t wcd9xxx_hs_remove_irq(int irq, void *data)
 {
 	struct wcd9xxx_mbhc *mbhc = data;
-
 	pr_debug("%s: enter, removal interrupt\n", __func__);
 	WCD9XXX_BCL_LOCK(mbhc->resmgr);
 	/*
@@ -3127,7 +3172,7 @@ static void wcd9xxx_correct_swch_plug(struct work_struct *work)
 	struct snd_soc_codec *codec;
 	enum wcd9xxx_mbhc_plug_type plug_type = PLUG_TYPE_INVALID;
 	unsigned long timeout;
-	int retry = 0, pt_gnd_mic_swap_cnt = 0;
+	int retry = 0, pt_gnd_mic_swap_cnt = 0, invalid_cnt = 0;
 	int highhph_cnt = 0;
 	bool correction = false;
 	bool current_source_enable;
@@ -3184,8 +3229,13 @@ static void wcd9xxx_correct_swch_plug(struct work_struct *work)
 		/* can race with removal interrupt */
 		WCD9XXX_BCL_LOCK(mbhc->resmgr);
 		if (current_source_enable)
-			plug_type = wcd9xxx_codec_cs_get_plug_type(mbhc,
+		#ifndef VENDOR_EDIT
+                /*wangdongdong@MultiMedia.AudioDrv,2015/05/27,modify for chinese headset detection*/	
+                        plug_type = wcd9xxx_codec_cs_get_plug_type(mbhc,
 								   highhph);
+                #else
+                        plug_type = wcd9xxx_codec_cs_get_plug_type(mbhc,true);
+                #endif
 		else
 			plug_type = wcd9xxx_codec_get_plug_type(mbhc, true);
 		WCD9XXX_BCL_UNLOCK(mbhc->resmgr);
@@ -3198,7 +3248,8 @@ static void wcd9xxx_correct_swch_plug(struct work_struct *work)
 					0;
 		highhph = wcd9xxx_mbhc_enable_mb_decision(highhph_cnt);
 		if (plug_type == PLUG_TYPE_INVALID) {
-			pr_debug("Invalid plug in attempt # %d\n", retry);
+		    invalid_cnt++;
+			pr_debug("Invalid plug in attempt # %d count %d\n", retry,invalid_cnt);
 			if (!mbhc->mbhc_cfg->detect_extn_cable &&
 			    retry == NUM_ATTEMPTS_TO_REPORT &&
 			    mbhc->current_plug == PLUG_TYPE_NONE) {
@@ -3206,6 +3257,12 @@ static void wcd9xxx_correct_swch_plug(struct work_struct *work)
 				wcd9xxx_report_plug(mbhc, 1,
 						    SND_JACK_HEADPHONE);
 				WCD9XXX_BCL_UNLOCK(mbhc->resmgr);
+			} else if (invalid_cnt == NUM_TO_REPORT_INVALID) {
+			    pr_debug("invalit_cnt = 10 report unsupported\n");
+			    WCD9XXX_BCL_LOCK(mbhc->resmgr);
+					wcd9xxx_report_plug(mbhc, 1,
+							SND_JACK_UNSUPPORTED);
+					WCD9XXX_BCL_UNLOCK(mbhc->resmgr);
 			}
 		} else if (plug_type == PLUG_TYPE_HEADPHONE) {
 			pr_debug("Good headphone detected, continue polling\n");
@@ -5431,6 +5488,25 @@ int wcd9xxx_mbhc_init(struct wcd9xxx_mbhc *mbhc, struct wcd9xxx_resmgr *resmgr,
 				__func__);
 			return ret;
 		}
+
+#ifdef VENDOR_EDIT
+//Ming.Liu@MultiMedia.AudioDrv, 2015-03-02, Add for 1+ headphone line control
+		ret = snd_jack_set_key(mbhc->button_jack.jack,
+					SND_JACK_BTN_3, KEY_VOLUMEUP);
+		if (ret) {
+			pr_err("%s: Failed to set code for btn-3\n",
+				__func__);
+			return ret;
+		}
+
+		ret = snd_jack_set_key(mbhc->button_jack.jack,
+					SND_JACK_BTN_7, KEY_VOLUMEDOWN);
+		if (ret) {
+			pr_err("%s: Failed to set code for btn-7\n",
+				__func__);
+			return ret;
+		}
+#endif /* VENDOR_EDIT */
 
 		INIT_DELAYED_WORK(&mbhc->mbhc_firmware_dwork,
 				  wcd9xxx_mbhc_fw_read);

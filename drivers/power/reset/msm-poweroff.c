@@ -77,6 +77,14 @@ static struct notifier_block panic_blk = {
 	.notifier_call	= panic_prep_restart,
 };
 
+#ifdef VENDOR_EDIT
+//hefaxi@filesystems, 2015/07/03, add for force dump function
+int oem_get_download_mode(void)
+{
+	return download_mode;
+}
+#endif
+
 int scm_set_dload_mode(int arg1, int arg2)
 {
 	struct scm_desc desc = {
@@ -99,15 +107,23 @@ int scm_set_dload_mode(int arg1, int arg2)
 	return scm_call2_atomic(SCM_SIP_FNID(SCM_SVC_BOOT, SCM_DLOAD_CMD),
 				&desc);
 }
-
+#ifdef VENDOR_EDIT/*Liwei@BSP added the varient for getting console address start and size*/
+typedef unsigned int       uint32;
+extern phys_addr_t ram_console_address_start;
+extern ssize_t ram_console_address_size;
+#endif /*VENDOR_EDIT*/
 static void set_dload_mode(int on)
 {
 	int ret;
-
+#ifdef VENDOR_EDIT/*Add print log*/
+	pr_info("Set dload mode:%s\n",on?"true":"false");
+#endif/*ifdef VENDOR_EDIT*/
 	if (dload_mode_addr) {
 		__raw_writel(on ? 0xE47B337D : 0, dload_mode_addr);
 		__raw_writel(on ? 0xCE14091A : 0,
 		       dload_mode_addr + sizeof(unsigned int));
+		__raw_writel(on ? (uint32)ram_console_address_start : 0, dload_mode_addr + 10*sizeof(uint32));
+		__raw_writel(on ? (uint32)ram_console_address_size : 0, dload_mode_addr + 11*sizeof(uint32));
 		mb();
 	}
 
@@ -212,6 +228,15 @@ static void halt_spmi_pmic_arbiter(void)
 	}
 }
 
+#ifdef VENDOR_EDIT
+#define FACTORY_MODE	        0x77665504
+#define WLAN_MODE		0x77665505
+#define RF_MODE			0x77665506
+#define MOS_MODE		0x77665507
+#define RECOVERY_MODE       0x77665502
+#define FASTBOOT_MODE      0x77665500
+#endif
+
 static void msm_restart_prepare(const char *cmd)
 {
 	bool need_warm_reset = false;
@@ -249,6 +274,40 @@ static void msm_restart_prepare(const char *cmd)
 		qpnp_pon_system_pwr_off(PON_POWER_OFF_HARD_RESET);
 	}
 
+#ifdef VENDOR_EDIT
+	if (cmd != NULL) {
+		if (!strncmp(cmd, "bootloader", 10)) {
+			__raw_writel(FASTBOOT_MODE, restart_reason);
+		} else if (!strncmp(cmd, "recovery", 8)) {
+			__raw_writel(RECOVERY_MODE, restart_reason);
+		}  else if (!strncmp(cmd, "rf", 2)) {
+			__raw_writel(RF_MODE, restart_reason);
+		}	else if (!strncmp(cmd, "wlan", 4)) {
+			__raw_writel(WLAN_MODE, restart_reason);
+		}	else if (!strncmp(cmd, "mos", 3)) {
+			__raw_writel(MOS_MODE, restart_reason);
+		}	else if (!strncmp(cmd, "ftm", 3)) {
+			__raw_writel(FACTORY_MODE, restart_reason);
+		} else if (!strncmp(cmd, "oem-", 4)) {
+			unsigned long code;
+			code = simple_strtoul(cmd + 4, NULL, 16) & 0xff;
+			__raw_writel(0x6f656d00 | code, restart_reason);
+		} else if (!strncmp(cmd, "kernel", 6)) {
+			__raw_writel(0x7766550a, restart_reason);
+		} else if (!strncmp(cmd, "modem", 5)) {
+			__raw_writel(0x7766550b, restart_reason);
+		} else if (!strncmp(cmd, "android", 7)) {
+			__raw_writel(0x7766550c, restart_reason);
+		} else if (!strncmp(cmd, "edl", 3)) {
+			enable_emergency_dload_mode();
+		} else {
+			__raw_writel(0x77665501, restart_reason);
+			  }
+	}else {
+		__raw_writel(0x77665501, restart_reason);
+	}
+
+#else
 	if (cmd != NULL) {
 		if (!strncmp(cmd, "bootloader", 10)) {
 			qpnp_pon_set_restart_reason(
@@ -275,7 +334,7 @@ static void msm_restart_prepare(const char *cmd)
 			__raw_writel(0x77665501, restart_reason);
 		}
 	}
-
+#endif
 	flush_cache_all();
 
 	/*outer_flush_all is not supported by 64bit kernel*/

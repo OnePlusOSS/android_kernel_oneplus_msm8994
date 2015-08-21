@@ -29,7 +29,8 @@
 #include "mdss_debug.h"
 
 #define VSYNC_PERIOD 17
-#define DMA_TX_TIMEOUT 200
+//#define DMA_TX_TIMEOUT 200
+#define DMA_TX_TIMEOUT 400 //qualcomm add patch for the lcd 2015-04-18
 #define DMA_TPG_FIFO_LEN 64
 
 struct mdss_dsi_ctrl_pdata *ctrl_list[DSI_CTRL_MAX];
@@ -2004,6 +2005,10 @@ void mdss_dsi_cmd_mdp_start(struct mdss_dsi_ctrl_pdata *ctrl)
 	spin_unlock_irqrestore(&ctrl->mdp_lock, flag);
 }
 
+#if 0
+#ifdef VENDOR_EDIT  //qualcomm modify for lcd crash 2015-04-18
+
+//qualcomm provide patch   2015-04-18
 static int mdss_dsi_mdp_busy_tout_check(struct mdss_dsi_ctrl_pdata *ctrl)
 {
 	unsigned long flag;
@@ -2034,7 +2039,55 @@ static int mdss_dsi_mdp_busy_tout_check(struct mdss_dsi_ctrl_pdata *ctrl)
 			stop_hs_clk = true;
 		}
 		tout = 0;	/* recovered */
-	}
+        } 
+
+        spin_unlock_irqrestore(&ctrl->mdp_lock, flag);
+
+        if (stop_hs_clk)
+            mdss_dsi_stop_hs_clk_lane(ctrl);
+
+        complete_all(&ctrl->mdp_comp);
+
+        mdss_dsi_clk_ctrl(ctrl, DSI_ALL_CLKS, 0);
+
+        return tout;
+}
+#endif
+#endif
+//qualcomm modify for lcd crash 2015-04-22
+
+static int mdss_dsi_mdp_busy_tout_check(struct mdss_dsi_ctrl_pdata *ctrl)
+ {
+       unsigned long flag;
+       u32 isr;
+       bool stop_hs_clk = false;
+       int tout = 1;
+
+       /*
+        * two possible scenario:
+        * 1) DSI_INTR_CMD_MDP_DONE set but isr not fired
+        * 2) DSI_INTR_CMD_MDP_DONE set and cleared (isr fired)
+        * but event_thread not wakeup
+        */
+       mdss_dsi_clk_ctrl(ctrl, DSI_ALL_CLKS, 1);
+       spin_lock_irqsave(&ctrl->mdp_lock, flag);
+
+       isr = MIPI_INP(ctrl->ctrl_base + 0x0110);
+       if (isr & DSI_INTR_CMD_MDP_DONE) {
+             WARN(1, "INTR_CMD_MDP_DONE set but isr not fired\n");
+             isr &= DSI_INTR_MASK_ALL;
+             isr |= DSI_INTR_CMD_MDP_DONE; /* clear this isr only */
+             MIPI_OUTP(ctrl->ctrl_base + 0x0110, isr);
+             mdss_dsi_disable_irq_nosync(ctrl, DSI_MDP_TERM);
+             ctrl->mdp_busy = false;
+             complete_all(&ctrl->mdp_comp);
+             if (ctrl->cmd_clk_ln_recovery_en &&
+                         ctrl->panel_mode == DSI_CMD_MODE) {
+                   /* has hs_lane_recovery do the work */
+                   stop_hs_clk = true;
+             }
+             tout = 0;     /* recovered */
+       }
 
 	spin_unlock_irqrestore(&ctrl->mdp_lock, flag);
 
@@ -2294,7 +2347,12 @@ static int dsi_event_thread(void *data)
 	u32 arg;
 	int ret;
 
+	#ifndef VENDOR_EDIT  //qualcomm modify for lcd crash 2015-04-18
 	param.sched_priority = 16;
+	#else
+	param.sched_priority = 17;
+	#endif
+
 	ret = sched_setscheduler_nocheck(current, SCHED_FIFO, &param);
 	if (ret)
 		pr_err("%s: set priority failed\n", __func__);

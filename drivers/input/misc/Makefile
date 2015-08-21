@@ -89,3 +89,12 @@ endif
 
 obj-$(CONFIG_SENSORS_MC3430)	+= mc3xxx.o
 obj-$(CONFIG_SENSORS_ISL29044A)	+= isl29044a.o
+#VENDOR_EDIT add for fpc1021 fingerprints
+obj-$(CONFIG_BTP_FPC1021)  += fpc1020_main.o fpc1020_capture.o fpc1020_common.o fpc1020_regulator.o fpc1020_nav.o
+#VENDOR_EDIT changhua add for tree state keys
+obj-$(CONFIG_TRI_STATE_KEY) += tri_state_key.o
+#VNEDOR_EDIT changhua add for use apk to controll antenna switch,MP not use
+obj-$(CONFIG_SWITCH_ANTENNA) += switch_antenna.o
+
+#changhua add for switch theme
+obj-$(CONFIG_SWITCH_THEME) += switch_theme.o

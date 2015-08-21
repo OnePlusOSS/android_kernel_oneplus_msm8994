@@ -21,5 +21,18 @@ extern struct cpufreq_policy *core_ctl_get_policy(int cpu);
 extern void core_ctl_put_policy(struct cpufreq_policy *policy);
 extern struct device *core_ctl_find_cpu_device(unsigned cpu);
 extern int core_ctl_online_core(unsigned int cpu);
-
+#ifdef VENDOR_EDIT
+/* ic, declarations for core ctrl extension */
+extern int core_ctl_is_online_idle_core(unsigned int cpu);
+extern unsigned int core_ctl_get_freq_cost(
+	unsigned int cpu,
+	unsigned int freq
+	);
+extern unsigned int core_ctl_get_cost_at_temp(
+	unsigned int cpu,
+	unsigned int freq,
+	long temp
+	);
+extern struct cpufreq_frequency_table *core_ctl_get_freq_tbl(unsigned int cpu);
+#endif
 #endif

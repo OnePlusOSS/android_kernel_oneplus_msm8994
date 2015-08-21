@@ -594,6 +594,11 @@ int qpnpint_unregister_controller(struct device_node *node)
 }
 EXPORT_SYMBOL(qpnpint_unregister_controller);
 
+#ifdef VENDOR_EDIT
+/* Zhonglan.sun@ProDrv.CHG,add 2015/1/7  Add for wakeup analysis */
+extern char wakeup_reason[32];
+#endif /* VENDOR_EDIT */
+
 static int __qpnpint_handle_irq(struct spmi_controller *spmi_ctrl,
 		       struct qpnp_irq_spec *spec,
 		       bool show)
@@ -633,6 +638,11 @@ static int __qpnpint_handle_irq(struct spmi_controller *spmi_ctrl,
 
 		pr_warn("%d triggered [0x%01x, 0x%02x,0x%01x] %s\n",
 				irq, spec->slave, spec->per, spec->irq, name);
+#ifdef VENDOR_EDIT
+/* Zhonglan.sun@ProDrv.CHG,add 2015/1/7  Add for wakeup analysis */
+		if(!wakeup_reason[0])
+			strncpy(wakeup_reason,name,sizeof(wakeup_reason) -1);
+#endif /* VENDOR_EDIT */
 	} else {
 		generic_handle_irq(irq);
 	}

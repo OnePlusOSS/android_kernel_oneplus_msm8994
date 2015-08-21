@@ -1449,6 +1449,21 @@ void bam_data_disconnect(struct data_port *gr, enum function_type func,
 	}
 
 	if (d->trans == USB_GADGET_XPORT_BAM2BAM_IPA) {
+//add by jiachenghui for usb fail after rndis click some times, 2015-7-8
+#ifdef VENDOR_EDIT
+	       void *priv;
+		if (d->func_type == USB_FUNC_ECM) {
+			priv = ecm_qc_get_ipa_priv();
+			ecm_ipa_disconnect(priv);
+		} else if (d->func_type == USB_FUNC_RNDIS) {
+			priv = rndis_qc_get_ipa_priv();
+			rndis_ipa_pipe_disconnect_notify(priv);
+			is_ipa_rndis_net_on = false;
+		} else if (d->func_type == USB_FUNC_MBIM) {
+			teth_bridge_disconnect(d->ipa_params.src_client);
+		}
+#endif
+//end add by jiachenghui for usb fail after rndis click some times, 2015-7-8
 		port->last_event = U_BAM_DATA_DISCONNECT_E;
 		queue_work(bam_data_wq, &port->disconnect_w);
 	} else {

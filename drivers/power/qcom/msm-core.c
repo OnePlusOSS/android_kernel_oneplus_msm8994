@@ -191,6 +191,38 @@ static void core_temp_notify(enum thermal_trip_type type,
 	complete(&sampling_completion);
 }
 
+#ifdef VENDOR_EDIT
+/* ic, provide pcost based on requested frequency and temperature */
+unsigned int power_cost_at_freq_at_temp(
+	unsigned int cpu,
+	unsigned int freq,
+	long temp)
+{
+	struct cpu_activity_info *cpu_node = &activity[cpu];
+	int temp_point, i;
+
+	if (!cpu_node->sp->table || !cpu_node->sp->num_of_freqs)
+		return 0;
+
+	/* come out temp point at intervals */
+	if (temp < TEMP_BASE_POINT)
+		temp_point = 0;
+	else if (temp > TEMP_MAX_POINT)
+		temp_point = TEMP_DATA_POINTS - 1;
+	else
+		temp_point = (temp - TEMP_BASE_POINT) / 5;
+
+	/* locate temp. then come out cost at that temp. and freq. */
+	for (i = 0; i < cpu_node->sp->num_of_freqs; i++) {
+		if (cpu_node->sp->table[i].frequency >= freq)
+			return cpu_node->sp->power[temp_point][i];
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(power_cost_at_freq_at_temp);
+#endif
+
 static void repopulate_stats(int cpu)
 {
 	int i;

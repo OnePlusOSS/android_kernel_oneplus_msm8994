@@ -18,6 +18,11 @@
 #include <linux/aio.h>
 #include <linux/falloc.h>
 
+#ifdef VENDOR_EDIT
+//hefaxi@filesystems, 2015/06/17, add for reserved memory
+#include <linux/statfs.h>
+#endif
+
 static const struct file_operations fuse_direct_io_file_operations;
 
 static int fuse_send_open(struct fuse_conn *fc, u64 nodeid, struct file *file,
@@ -1221,6 +1226,33 @@ static ssize_t fuse_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 	ssize_t err;
 	struct iov_iter i;
 	loff_t endbyte = 0;
+
+#ifdef VENDOR_EDIT
+//hefaxi@filesystems, 2015/06/17, add for reserved memory
+	struct kstatfs statfs;
+	u64 avail;
+	size_t size;
+
+	if(get_fuse_conn(inode)->reserved_mem != 0){
+		err = vfs_statfs(&file->f_path,&statfs);
+		if(unlikely(err)){
+			printk(KERN_INFO "call vfs_statfs error(%d)\n",(int)err);
+			return err;
+		}
+
+		avail = statfs.f_bavail * statfs.f_bsize;
+		size = iov_length(iov, nr_segs);
+
+		if((u64)size > avail){
+			printk(KERN_INFO "No space left on fuse.\n");
+			printk(KERN_INFO "statfs.f_bavail : %llu blocks / "
+				"statfs.f_bsize : %ld bytes / "
+				"required size : %llu byte\n",
+				statfs.f_bavail, statfs.f_bsize, (u64)size);
+			return -ENOSPC;
+		}
+	}
+#endif
 
 	if (get_fuse_conn(inode)->writeback_cache) {
 		/* Update size (EOF optimization) and mode (SUID clearing) */

@@ -36,7 +36,12 @@
 #include <linux/usb/ch9.h>
 #include <linux/usb/f_mtp.h>
 
+#ifdef VENDOR_EDIT
+#define MTP_BULK_BUFFER_SIZE       65536
+#else
 #define MTP_BULK_BUFFER_SIZE       16384
+#endif /* VENDOR_EDIT */
+
 #define INTR_BUFFER_SIZE           28
 
 /* String IDs */

@@ -35,15 +35,30 @@
 #include <linux/compiler.h>
 #include <linux/pstore_ram.h>
 
+#ifdef VENDOR_EDIT // add by xcb for ramoops 2015-03-31
+#include <linux/of_address.h>
+#include <linux/memblock.h>
+#endif /* VENDOR_EDIT */
+
+#ifdef VENDOR_EDIT   // modify by yangrujin@bsp for ramoops memcpy addr alignment 2015-05-27
+void *memcpy_pstore(void *dest, const void *src, size_t count);
+#endif
+
 #define RAMOOPS_KERNMSG_HDR "===="
 #define MIN_MEM_SIZE 4096UL
+
 
 static ulong record_size = MIN_MEM_SIZE;
 module_param(record_size, ulong, 0400);
 MODULE_PARM_DESC(record_size,
 		"size of each dump done on oops/panic");
 
+#ifdef VENDOR_EDIT  // add by xcb for ramoops 2015-03-31
+static ulong ramoops_console_size = 256*1024UL;
+#else
 static ulong ramoops_console_size = MIN_MEM_SIZE;
+#endif /* VENDOR_EDIT */
+
 module_param_named(console_size, ramoops_console_size, ulong, 0400);
 MODULE_PARM_DESC(console_size, "size of kernel console log");
 
@@ -164,8 +179,11 @@ static ssize_t ramoops_pstore_read(u64 *id, enum pstore_type_id *type,
 	*buf = kmalloc(size + ecc_notice_size + 1, GFP_KERNEL);
 	if (*buf == NULL)
 		return -ENOMEM;
-
+#ifdef VENDOR_EDIT  // modify by yangrujin@bsp for ramoops memcpy addr alignment 2015-05-27
+	memcpy_pstore(*buf, persistent_ram_old(prz), size);
+#else
 	memcpy(*buf, persistent_ram_old(prz), size);
+#endif
 	persistent_ram_ecc_string(prz, *buf + size, ecc_notice_size + 1);
 
 	return size + ecc_notice_size;
@@ -383,10 +401,85 @@ void notrace ramoops_console_write_buf(const char *buf, size_t size)
 	persistent_ram_write(cxt->cprz, buf, size);
 }
 
+#ifdef VENDOR_EDIT  // add by xcb for ramoops 2015-03-31
+#ifdef CONFIG_OF
+
+static __ref struct ramoops_platform_data * of_ramoops_platform_data(struct device * dev)
+{
+	//const __be32 *addrp;
+	//u64 size;
+	struct device_node *node = dev->of_node;
+	struct ramoops_platform_data *pdata;
+	struct device_node *pnode;
+	unsigned long offsets[2];
+
+	pdata = devm_kzalloc(dev, sizeof(*pdata), GFP_KERNEL);
+	if (!pdata)
+		return NULL;
+	/*
+	addrp = of_get_address(node, 0, &size, NULL);
+	if (addrp == NULL)
+		return NULL;
+	pdata->mem_address = of_translate_address(node, addrp);
+	pdata->mem_size = size;
+	*/
+
+	pnode = of_parse_phandle(node, "linux,contiguous-region", 0);
+	if (pnode != NULL) {
+		const u32 *addr;
+		u64 size;
+		addr = of_get_address(pnode, 0, &size, NULL);
+		if (!addr) {
+			pr_err("failed to parse the ramoops memory address\n");
+			of_node_put(pnode);
+			return NULL;
+		}
+		offsets[0] = of_read_ulong(addr, 2);
+		offsets[1] = (unsigned long) size;
+		of_node_put(pnode);
+	} else {
+		pr_err("mem reservation for ramoops not present\n");
+		return NULL;
+	}
+
+
+	pdata->mem_address = offsets[0];
+	pdata->mem_size = offsets[1];
+
+	pdata->record_size = record_size;
+	pdata->console_size = ramoops_console_size;
+	pdata->ftrace_size = ramoops_ftrace_size;
+	pdata->dump_oops = dump_oops;
+
+	return pdata;
+}
+
+
+static const struct of_device_id ramoops_of_match[] = {
+	{ .compatible = "ramoops", },
+	{ },
+};
+MODULE_DEVICE_TABLE(of, ramoops_of_match);
+
+#else
+
+static inline struct ramoops_platform_data *
+	of_ramoops_platform_data(struct device * dev)(struct device *dev) { return NULL; }
+
+#endif
+#endif /* VENDOR_EDIT */
+
+#ifdef VENDOR_EDIT/*LiWei added for set console address start and size*/
+phys_addr_t ram_console_address_start;
+ssize_t ram_console_address_size;
+#endif /*VENDOR_EDIT*/
+
+
 static int ramoops_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct ramoops_platform_data *pdata = pdev->dev.platform_data;
+
 	struct ramoops_context *cxt = &oops_cxt;
 	size_t dump_mem_sz;
 	phys_addr_t paddr;
@@ -398,13 +491,32 @@ static int ramoops_probe(struct platform_device *pdev)
 	if (cxt->max_dump_cnt)
 		goto fail_out;
 
+
+#ifdef VENDOR_EDIT  // add by xcb for ramoops 2015-03-31
+	if (pdev->dev.of_node) {
+		pdata = of_ramoops_platform_data(&pdev->dev);
+		if (!pdata) {
+			pr_err("Invalid ramoops device tree data\n");
+			goto fail_out;
+		}
+
+	} else {
+		pdata = pdev->dev.platform_data;
+	}
+
+	if (!pdata) {
+		pr_err("Ramopps cannot get device platform data\n");
+		err = -EINVAL;
+		goto fail_out;
+	}
+#endif /* VENDOR_EDIT */
+
 	if (!pdata->mem_size || (!pdata->record_size && !pdata->console_size &&
 			!pdata->ftrace_size)) {
 		pr_err("The memory size and the record/console size must be "
 			"non-zero\n");
 		goto fail_out;
 	}
-
 	if (!is_power_of_2(pdata->mem_size))
 		pdata->mem_size = rounddown_pow_of_two(pdata->mem_size);
 	if (!is_power_of_2(pdata->record_size))
@@ -426,20 +538,23 @@ static int ramoops_probe(struct platform_device *pdev)
 	paddr = cxt->phys_addr;
 
 	dump_mem_sz = cxt->size - cxt->console_size - cxt->ftrace_size;
+
 	err = ramoops_init_przs(dev, cxt, &paddr, dump_mem_sz);
 	if (err)
 		goto fail_out;
-
 	err = ramoops_init_prz(dev, cxt, &cxt->cprz, &paddr,
 			       cxt->console_size, 0);
 	if (err)
 		goto fail_init_cprz;
+#ifdef VENDOR_EDIT /*liwei added for getting ram console address start address and size*/
+	ram_console_address_start = cxt->cprz->paddr;
+	ram_console_address_size  = cxt->console_size; 
+#endif /*VENDOR_EDIT*/
 
 	err = ramoops_init_prz(dev, cxt, &cxt->fprz, &paddr, cxt->ftrace_size,
 			       LINUX_VERSION_CODE);
 	if (err)
 		goto fail_init_fprz;
-
 	if (!cxt->przs && !cxt->cprz && !cxt->fprz) {
 		pr_err("memory size too small, minimum is %zu\n",
 			cxt->console_size + cxt->record_size +
@@ -465,13 +580,11 @@ static int ramoops_probe(struct platform_device *pdev)
 		err = -ENOMEM;
 		goto fail_clear;
 	}
-
 	err = pstore_register(&cxt->pstore);
 	if (err) {
 		pr_err("registering with pstore failed\n");
 		goto fail_buf;
 	}
-
 	/*
 	 * Update the module parameter variables as well so they are visible
 	 * through /sys/module/ramoops/parameters/
@@ -480,6 +593,8 @@ static int ramoops_probe(struct platform_device *pdev)
 	mem_address = pdata->mem_address;
 	record_size = pdata->record_size;
 	dump_oops = pdata->dump_oops;
+
+	//memblock_reserve(mem_address, mem_size);
 
 	pr_info("attached 0x%lx@0x%llx, ecc: %d/%d\n",
 		cxt->size, (unsigned long long)cxt->phys_addr,
@@ -529,6 +644,9 @@ static struct platform_driver ramoops_driver = {
 	.driver		= {
 		.name	= "ramoops",
 		.owner	= THIS_MODULE,
+#ifdef VENDOR_EDIT  // add by xcb for ramoops 2015-03-31
+		.of_match_table = of_match_ptr(ramoops_of_match),
+#endif /* VENDOR_EDIT */
 	},
 };
 

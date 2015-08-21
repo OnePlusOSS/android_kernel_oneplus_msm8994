@@ -464,6 +464,14 @@ config QPNP_SMBCHARGER
 	  supports USB detection and battery charging up to 3A.
 	  The driver also offers relevant information to userspace via the
 	  power supply framework.
+#ifdef VENDOR_EDIT
+#Add by yangrujin@bsp, set pmi reset type, avoid pmi warm reset but pm shutdown,
+#to fix issue that handset die but no dump port.
+config SET_PMI8994_RESET_TYPE
+	tristate "Set PMI8994 reset type"
+	help
+	  Say Y here to enable set pmi8994 reset type
+#endif
 
 config QPNP_FG
 	tristate "QPNP fuel gauge driver"

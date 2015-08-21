@@ -5,7 +5,10 @@
  *
  * This file is released under the GPLv2.
  */
-
+#ifdef VENDOR_EDIT
+/* Zhonglan.sun@ProDrv.CHG,add 2015/1/7  Add for active wl dump */
+#include <linux/module.h>
+#endif /* VENDOR_EDIT */
 #include <linux/device.h>
 #include <linux/slab.h>
 #include <linux/sched.h>
@@ -855,6 +858,48 @@ static int print_wakeup_source_stats(struct seq_file *m,
 	return ret;
 }
 
+#ifdef VENDOR_EDIT
+/* Zhonglan.sun@ProDrv.CHG,add 2015/1/7  Add for active wl dump */
+static int dump_active_wakeup_source(struct wakeup_source *ws)
+{
+	unsigned long flags;
+	ktime_t total_time;
+	ktime_t max_time;
+	unsigned long active_count;
+	ktime_t active_time;
+	ktime_t prevent_sleep_time;
+	int ret = 0;
+
+	spin_lock_irqsave(&ws->lock, flags);
+
+	total_time = ws->total_time;
+	max_time = ws->max_time;
+	prevent_sleep_time = ws->prevent_sleep_time;
+	active_count = ws->active_count;
+	if (ws->active) {
+		ktime_t now = ktime_get();
+
+		active_time = ktime_sub(now, ws->last_time);
+		total_time = ktime_add(total_time, active_time);
+		if (active_time.tv64 > max_time.tv64)
+			max_time = active_time;
+
+		if (ws->autosleep_enabled)
+			prevent_sleep_time = ktime_add(prevent_sleep_time,
+				ktime_sub(now, ws->start_prevent_time));
+	} else {
+		active_time = ktime_set(0, 0);
+	}
+
+	if(ktime_to_ms(active_time))
+		pr_info("%-12s\t %lld\n",ws->name, ktime_to_ms(active_time));
+
+	spin_unlock_irqrestore(&ws->lock, flags);
+
+	return ret;
+}
+#endif /* VENDOR_EDIT */
+
 /**
  * wakeup_sources_stats_show - Print wakeup sources statistics information.
  * @m: seq_file to print the statistics into.
@@ -888,10 +933,46 @@ static const struct file_operations wakeup_sources_stats_fops = {
 	.release = single_release,
 };
 
+#ifdef VENDOR_EDIT
+/* Zhonglan.sun@ProDrv.CHG,add 2015/1/7  Add for active wl dump */
+static struct workqueue_struct *wakelock_dump_wq;
+static struct delayed_work wakelock_dump_worker;
+
+static bool dump_active_wl_enable = false;
+module_param(dump_active_wl_enable, bool, S_IRUGO | S_IWUSR);
+
+static void dump_active_wl(void)
+{
+	struct wakeup_source *ws;
+
+	rcu_read_lock();
+
+	pr_info("%s+++++++++++++++++\n",__func__);
+		list_for_each_entry_rcu(ws, &wakeup_sources, entry)
+			dump_active_wakeup_source(ws);
+	pr_info("%s-----------------\n",__func__);
+
+	rcu_read_unlock();
+}
+
+static void wakelock_dump_handler(struct work_struct *work)
+{
+	if(dump_active_wl_enable)
+		dump_active_wl();
+	queue_delayed_work(wakelock_dump_wq,&wakelock_dump_worker, 20 * HZ);
+}
+#endif /* VENDOR_EDIT */
+
 static int __init wakeup_sources_debugfs_init(void)
 {
 	wakeup_sources_stats_dentry = debugfs_create_file("wakeup_sources",
 			S_IRUGO, NULL, NULL, &wakeup_sources_stats_fops);
+#ifdef VENDOR_EDIT
+/* Zhonglan.sun@ProDrv.CHG,add 2015/1/7  Add for active wl dump */
+	wakelock_dump_wq = create_singlethread_workqueue("wakelock_dump_wq");
+	INIT_DELAYED_WORK(&wakelock_dump_worker,wakelock_dump_handler);
+	queue_delayed_work(wakelock_dump_wq,&wakelock_dump_worker, 20 * HZ);
+#endif /* VENDOR_EDIT */
 	return 0;
 }
 

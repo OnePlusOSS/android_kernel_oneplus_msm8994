@@ -47,8 +47,11 @@
 
 #define VFE_PING_FLAG 0xFFFFFFFF
 #define VFE_PONG_FLAG 0x0
-
+#ifdef VENDOR_EDIT
+#define VFE_MAX_CFG_TIMEOUT 6000
+#else
 #define VFE_MAX_CFG_TIMEOUT 3000
+#endif
 #define VFE_CLK_INFO_MAX 16
 #define STATS_COMP_BIT_MASK 0x1FF
 
@@ -316,6 +319,7 @@ struct msm_vfe_axi_stream {
 	struct msm_isp_buffer *buf[2];
 	uint32_t session_id;
 	uint32_t stream_id;
+	uint32_t user_stream_id;
 	uint32_t bufq_handle[VFE_BUF_QUEUE_MAX];
 	uint8_t controllable_output;
 	uint8_t undelivered_request_cnt;

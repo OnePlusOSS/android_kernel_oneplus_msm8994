@@ -99,6 +99,9 @@ enum cnss_driver_status {
 };
 
 extern int cnss_get_fw_image(struct image_desc_info *image_desc_info);
+//#ifdef VENDOR_EDIT
+extern void cnss_set_fw_version(u32 version);
+//#endif /* VENDOR_EDIT */
 
 extern void cnss_device_crashed(void);
 extern void cnss_device_self_recovery(void);

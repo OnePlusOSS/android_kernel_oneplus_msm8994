@@ -600,9 +600,17 @@ void msm_isp_notify(struct vfe_device *vfe_dev, uint32_t event_type,
 
 		if (vfe_dev->axi_data.src_info[frame_src].frame_id == 0)
 			vfe_dev->axi_data.src_info[frame_src].frame_id = 1;
+
+		#ifdef VENDOR_EDIT
+		if (vfe_dev->axi_data.src_info[frame_src].frame_id <= 5u)
+			pr_info("%s: frame_src %d frame id: %u\n", __func__,
+				frame_src,
+				vfe_dev->axi_data.src_info[frame_src].frame_id);
+		#else
 		ISP_DBG("%s: frame_src %d frame id: %u\n", __func__,
 			frame_src,
 			vfe_dev->axi_data.src_info[frame_src].frame_id);
+		#endif
 		break;
 
 	default:

@@ -27,7 +27,7 @@
 #else
 #define XLOG_DEFAULT_ENABLE 0
 #endif
-
+//according the qualcomm need dump in RAM
 #define XLOG_DEFAULT_PANIC 1
 #define XLOG_DEFAULT_REGDUMP 0x2 /* dump in RAM */
 #define XLOG_DEFAULT_DBGBUSDUMP 0x3 /* dump in LOG & RAM */
@@ -450,8 +450,22 @@ static void mdss_xlog_dump_array(struct mdss_debug_base *blk_arr[],
 		mdss_dump_debug_bus(mdss_dbg_xlog.enable_dbgbus_dump,
 			&mdss_dbg_xlog.dbgbus_dump);
 
+#ifndef VENDOR_EDIT  //guozhiming add for test
+
 	if (dead && mdss_dbg_xlog.panic_on_err)
-		panic(name);
+		{	
+			panic(name);
+		}
+#else
+
+	if (dead && mdss_dbg_xlog.panic_on_err)
+		{
+		char i;
+		for(i=0;i<100;i++)
+		printk(KERN_ERR"check find the display error\n");
+		//panic(name);
+		}
+#endif
 }
 
 static void xlog_debug_work(struct work_struct *work)

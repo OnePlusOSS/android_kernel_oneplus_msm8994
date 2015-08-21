@@ -32,6 +32,7 @@
 #define KGSL_PWRFLAGS_CLK_ON   1
 #define KGSL_PWRFLAGS_AXI_ON   2
 #define KGSL_PWRFLAGS_IRQ_ON   3
+#define KGSL_PWRFLAGS_WAKEUP_PWRLEVEL   4
 
 #define UPDATE_BUSY_VAL		1000000
 
@@ -366,6 +367,14 @@ void kgsl_pwrctrl_pwrlevel_change(struct kgsl_device *device,
 	 */
 	new_level = _adjust_pwrlevel(pwr, new_level, &pwr->constraint,
 					device->pwrscale.popp_level);
+
+	/*
+	 * When waking up from SLUMBER at turbo then set the pwrlevel
+	 * to one level below turbo
+	 */
+	if (new_level == 0 && test_bit(KGSL_PWRFLAGS_WAKEUP_PWRLEVEL,
+		&device->pwrctrl.ctrl_flags))
+		new_level = 1;
 
 	/*
 	 * If thermal cycling is required and the new level hits the
@@ -1398,6 +1407,7 @@ void kgsl_thermal_timer(unsigned long data)
 	queue_work(device->work_queue, &device->pwrctrl.thermal_cycle_ws);
 }
 
+int get_chipset_a57speedbin(void);
 int kgsl_pwrctrl_init(struct kgsl_device *device)
 {
 	int i, k, m, set_bus = 1, n = 0, result = 0;
@@ -1436,6 +1446,10 @@ int kgsl_pwrctrl_init(struct kgsl_device *device)
 	/* Initialize the user and thermal clock constraints */
 
 	pwr->max_pwrlevel = 0;
+#if 0
+	if(get_chipset_a57speedbin())
+		pwr->max_pwrlevel = 1;
+#endif
 	pwr->min_pwrlevel = pdata->num_levels - 2;
 	pwr->thermal_pwrlevel = 0;
 
@@ -1918,7 +1932,16 @@ _aware(struct kgsl_device *device)
 		del_timer_sync(&device->idle_timer);
 		break;
 	case KGSL_STATE_SLUMBER:
+		/*
+		 * Set this flag to avoid waking up at turbo
+		 * because wakeup at turbo is not stable
+		 * on some slow parts
+		 */
+		set_bit(KGSL_PWRFLAGS_WAKEUP_PWRLEVEL,
+				&device->pwrctrl.ctrl_flags);
 		status = kgsl_pwrctrl_enable(device);
+		clear_bit(KGSL_PWRFLAGS_WAKEUP_PWRLEVEL,
+				&device->pwrctrl.ctrl_flags);
 		break;
 	default:
 		status = -EINVAL;

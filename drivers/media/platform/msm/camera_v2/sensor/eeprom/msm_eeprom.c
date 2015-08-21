@@ -920,10 +920,71 @@ static long msm_eeprom_subdev_fops_ioctl32(struct file *file, unsigned int cmd,
 
 #endif
 
-static int msm_eeprom_platform_probe(struct platform_device *pdev)
+//Add by likelong@camera 2015.5.19 to reduce the device bring up time start
+#ifdef VENDOR_EDIT
+static void eeprom_read_work(struct work_struct *work)
 {
 	int rc = 0;
 	int j = 0;
+	struct msm_eeprom_ctrl_t *e_ctrl =
+		container_of(work, struct msm_eeprom_ctrl_t,
+				read_work);
+
+	mutex_lock(&msm_eeprom_mutex);
+
+	rc = msm_camera_power_up(&e_ctrl->eboard_info->power_info,
+		e_ctrl->eeprom_device_type,
+		&e_ctrl->i2c_client);
+	if (rc) {
+		pr_err("failed rc %d\n", rc);
+		goto memdata_free;
+	}
+
+	rc = read_eeprom_memory(e_ctrl, &e_ctrl->cal_data);
+	if (rc < 0) {
+		pr_err("%s read_eeprom_memory failed\n", __func__);
+		goto power_down;
+	}
+
+	for (j = 0; j < e_ctrl->cal_data.num_data; j++)
+		CDBG("memory_data[%d] = 0x%X\n", j,
+			e_ctrl->cal_data.mapdata[j]);
+
+	e_ctrl->is_supported |= msm_eeprom_match_crc(&e_ctrl->cal_data);
+	e_ctrl->is_supported = (e_ctrl->is_supported << 1) | 1;
+
+	rc = msm_camera_power_down(&e_ctrl->eboard_info->power_info,
+		e_ctrl->eeprom_device_type,
+		&e_ctrl->i2c_client);
+	if (rc) {
+		pr_err("failed rc %d\n", rc);
+		goto memdata_free;
+	}
+
+	mutex_unlock(&msm_eeprom_mutex);
+
+	return;
+
+power_down:
+	msm_camera_power_down(&e_ctrl->eboard_info->power_info,
+		e_ctrl->eeprom_device_type,
+		&e_ctrl->i2c_client);
+memdata_free:
+	kfree(e_ctrl->cal_data.mapdata);
+	kfree(e_ctrl->cal_data.map);
+	mutex_unlock(&msm_eeprom_mutex);
+}
+#endif
+//Add by likelong@camera 2015.5.19 to reduce the device bring up time end
+
+static int msm_eeprom_platform_probe(struct platform_device *pdev)
+{
+	int rc = 0;
+//Add by likelong@camera 2015.5.19 to reduce the device bring up time start
+#ifndef VENDOR_EDIT
+	int j = 0;
+#endif
+//Add by likelong@camera 2015.5.19 to reduce the device bring up time end
 	uint32_t temp;
 
 	struct msm_camera_cci_client *cci_client = NULL;
@@ -941,6 +1002,11 @@ static int msm_eeprom_platform_probe(struct platform_device *pdev)
 	}
 	e_ctrl->eeprom_v4l2_subdev_ops = &msm_eeprom_subdev_ops;
 	e_ctrl->eeprom_mutex = &msm_eeprom_mutex;
+//Add by likelong@camera 2015.5.19 to reduce the device bring up time start
+#ifdef VENDOR_EDIT
+	INIT_WORK(&e_ctrl->read_work, eeprom_read_work);
+#endif
+//Add by likelong@camera 2015.5.19 to reduce the device bring up time end
 
 	e_ctrl->is_supported = 0;
 	if (!of_node) {
@@ -1036,6 +1102,8 @@ static int msm_eeprom_platform_probe(struct platform_device *pdev)
 	if (rc < 0)
 		goto board_free;
 
+//Add by likelong@camera 2015.5.19 to reduce the device bring up time start
+#ifndef VENDOR_EDIT
 	rc = msm_camera_power_up(power_info, e_ctrl->eeprom_device_type,
 		&e_ctrl->i2c_client);
 	if (rc) {
@@ -1059,6 +1127,11 @@ static int msm_eeprom_platform_probe(struct platform_device *pdev)
 		pr_err("failed rc %d\n", rc);
 		goto memdata_free;
 	}
+#else
+	schedule_work(&e_ctrl->read_work);
+#endif
+//Add by likelong@camera 2015.5.19 to reduce the device bring up time end
+
 	v4l2_subdev_init(&e_ctrl->msm_sd.sd,
 		e_ctrl->eeprom_v4l2_subdev_ops);
 	v4l2_set_subdevdata(&e_ctrl->msm_sd.sd, e_ctrl);
@@ -1079,16 +1152,25 @@ static int msm_eeprom_platform_probe(struct platform_device *pdev)
 	e_ctrl->msm_sd.sd.devnode->fops = &msm_eeprom_v4l2_subdev_fops;
 #endif
 
+//Add by likelong@camera 2015.5.19 to reduce the device bring up time start
+#ifndef VENDOR_EDIT
 	e_ctrl->is_supported = (e_ctrl->is_supported << 1) | 1;
+#endif
+//Add by likelong@camera 2015.5.19 to reduce the device bring up time end
+
 	CDBG("%s X\n", __func__);
 	return rc;
 
+//Add by likelong@camera 2015.5.19 to reduce the device bring up time start
+#ifndef VENDOR_EDIT
 power_down:
 	msm_camera_power_down(power_info, e_ctrl->eeprom_device_type,
 		&e_ctrl->i2c_client);
 memdata_free:
 	kfree(e_ctrl->cal_data.mapdata);
 	kfree(e_ctrl->cal_data.map);
+#endif
+//Add by likelong@camera 2015.5.19 to reduce the device bring up time end
 board_free:
 	kfree(e_ctrl->eboard_info);
 cciclient_free:

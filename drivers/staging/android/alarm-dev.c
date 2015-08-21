@@ -29,6 +29,12 @@
 #define ANDROID_ALARM_PRINT_IO (1U << 1)
 #define ANDROID_ALARM_PRINT_INT (1U << 2)
 
+#ifdef VENDOR_EDIT
+/*shankai 2015-4-2 add begin for alarm_powerup (temporary solution)*/
+#define ANDROID_ALARM_RTC_POWEROFF_WAKEUP_TEMP 5
+
+#endif
+
 static int debug_mask = ANDROID_ALARM_PRINT_INFO;
 module_param_named(debug_mask, debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
 
@@ -111,9 +117,12 @@ static void alarm_clear(enum android_alarm_type alarm_type, struct timespec *ts)
 	}
 	alarm_enabled &= ~alarm_type_mask;
 	spin_unlock_irqrestore(&alarm_slock, flags);
-
-	if (alarm_type == ANDROID_ALARM_RTC_POWEROFF_WAKEUP)
+	
+     	#ifdef VENDOR_EDIT //shankai@bsp ,modify for rtc power off wakeup support 
+	if ((alarm_type == ANDROID_ALARM_RTC_POWEROFF_WAKEUP_TEMP)||(alarm_type == ANDROID_ALARM_RTC_POWEROFF_WAKEUP))
 		set_power_on_alarm(ts->tv_sec, 0);
+	#endif  /* VENDOR_EDIT */
+	
 	mutex_unlock(&alarm_mutex);
 }
 
@@ -131,8 +140,11 @@ static void alarm_set(enum android_alarm_type alarm_type,
 	devalarm_start(&alarms[alarm_type], timespec_to_ktime(*ts));
 	spin_unlock_irqrestore(&alarm_slock, flags);
 
-	if (alarm_type == ANDROID_ALARM_RTC_POWEROFF_WAKEUP)
+	#ifdef VENDOR_EDIT //shankai@bsp ,modify for rtc power off wakeup support 
+	if ((alarm_type == ANDROID_ALARM_RTC_POWEROFF_WAKEUP_TEMP)||(alarm_type == ANDROID_ALARM_RTC_POWEROFF_WAKEUP))
 		set_power_on_alarm(ts->tv_sec, 1);
+	#endif  /* VENDOR_EDIT */
+	
 	mutex_unlock(&alarm_mutex);
 }
 

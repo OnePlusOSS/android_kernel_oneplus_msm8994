@@ -168,6 +168,14 @@ void __attribute__ ((weak)) arch_suspend_enable_irqs(void)
 	local_irq_enable();
 }
 
+#ifdef VENDOR_EDIT
+/* Zhonglan.sun@ProDrv.CHG,add 2015/1/7  Add for wakeup analysis */
+char wakeup_reason[32] = {0};
+
+static struct timespec ts_resume = {0};
+static struct timespec ts_suspend = {0};
+#endif /* VENDOR_EDIT */
+
 /**
  * suspend_enter - Make the system enter the given sleep state.
  * @state: System sleep state to enter.
@@ -175,6 +183,11 @@ void __attribute__ ((weak)) arch_suspend_enable_irqs(void)
  *
  * This function should be called after devices have been suspended.
  */
+#ifdef VENDOR_EDIT
+extern void regulator_suspend_dump(void);
+extern void pinctrl_suspend_dump(void);
+extern void pinctrl_suspend_resume_config(bool to_suspend);
+#endif /* VENDOR_EDIT */
 static int suspend_enter(suspend_state_t state, bool *wakeup)
 {
 	int error;
@@ -218,14 +231,40 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 	arch_suspend_disable_irqs();
 	BUG_ON(!irqs_disabled());
 
+#ifdef VENDOR_EDIT
+/* Zhonglan.sun@ProDrv.CHG,add 2015/1/7  Add for wakeup analysis */
+	getnstimeofday(&ts_suspend);
+#endif /* VENDOR_EDIT */
 	error = syscore_suspend();
+#ifdef VENDOR_EDIT
+/* Zhonglan.sun@ProDrv.CHG,add 2015/1/7  Add for wakeup analysis */
+	if(wakeup_reason[0]);
+		pr_info("Last wakeup reason is %s and last for %ld s\n", wakeup_reason,(long)(ts_suspend.tv_sec  - ts_resume.tv_sec));
+#endif /* VENDOR_EDIT */
 	if (!error) {
 		*wakeup = pm_wakeup_pending();
 		if (!(suspend_test(TEST_CORE) || *wakeup)) {
+#ifdef VENDOR_EDIT
+			regulator_suspend_dump();
+			pinctrl_suspend_resume_config(true); //reconfig to suspend state
+			pinctrl_suspend_dump();
+#endif /* VENDOR_EDIT */
 			error = suspend_ops->enter(state);
+#ifdef VENDOR_EDIT
+			pinctrl_suspend_resume_config(false); //reconfig to resume state
+#endif /* VENDOR_EDIT */
+
 			events_check_enabled = false;
 		}
+#ifdef VENDOR_EDIT
+/* Zhonglan.sun@ProDrv.CHG,add 2015/1/7  Add for wakeup analysis */
+		memset(wakeup_reason, 0, sizeof(wakeup_reason));
+#endif /* VENDOR_EDIT */
 		syscore_resume();
+#ifdef VENDOR_EDIT
+/* Zhonglan.sun@ProDrv.CHG,add 2015/1/7  Add for wakeup analysis */
+		getnstimeofday(&ts_resume);
+#endif /* VENDOR_EDIT */
 	}
 
 	arch_suspend_enable_irqs();

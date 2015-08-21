@@ -233,15 +233,18 @@ static int mdss_mdp_cmd_tearcheck_cfg(struct mdss_mdp_mixer *mixer,
 	mdss_mdp_pingpong_write(pingpong_base,
 		MDSS_MDP_REG_PP_SYNC_CONFIG_HEIGHT,
 		te ? te->sync_cfg_height : 0);
+		//(ctx->ctl->height -1));
 	mdss_mdp_pingpong_write(pingpong_base,
 		MDSS_MDP_REG_PP_VSYNC_INIT_VAL,
 		te ? te->vsync_init_val : 0);
 	mdss_mdp_pingpong_write(pingpong_base,
 		MDSS_MDP_REG_PP_RD_PTR_IRQ,
 		te ? te->rd_ptr_irq : 0);
+		//(ctx->ctl->height - ctx->ctl->height * 55 / 1000 - 1));
 	mdss_mdp_pingpong_write(pingpong_base,
 		MDSS_MDP_REG_PP_START_POS,
 		te ? te->start_pos : 0);
+		//(ctx->ctl->height - ctx->ctl->height * 55 / 1000)); /* 5% accuracy error */
 	mdss_mdp_pingpong_write(pingpong_base,
 		MDSS_MDP_REG_PP_SYNC_THRESH,
 		te ? ((te->sync_threshold_continue << 16) |
@@ -249,7 +252,6 @@ static int mdss_mdp_cmd_tearcheck_cfg(struct mdss_mdp_mixer *mixer,
 	mdss_mdp_pingpong_write(pingpong_base,
 		MDSS_MDP_REG_PP_SYNC_WRCOUNT,
 		te ? (te->start_pos + te->sync_threshold_start + 1) : 0);
-
 	return 0;
 }
 
@@ -1214,7 +1216,10 @@ int mdss_mdp_cmd_stop(struct mdss_mdp_ctl *ctl, int panel_power_state)
 	}
 
 	mutex_lock(&ctl->offlock);
+	#ifndef VENDOR_EDIT
+	//add Patch from Qualcomm 2015-04-22 for fix "Display can not power on after receive  a Weixin message in power off state" issue.
 	if (__mdss_mdp_cmd_is_panel_power_on_interactive(ctx)) {
+
 		if (mdss_panel_is_power_on_lp(panel_power_state)) {
 			/*
 			 * If we are transitioning from interactive to low
@@ -1230,6 +1235,23 @@ int mdss_mdp_cmd_stop(struct mdss_mdp_ctl *ctl, int panel_power_state)
 			turn_off_clocks = true;
 			panel_off = true;
 		}
+	#else
+if (mdss_panel_is_power_off(panel_power_state)) {
+		/* Transition to display off */
+		send_panel_events = true;
+		turn_off_clocks = true;
+		panel_off = true;
+	} else if (__mdss_mdp_cmd_is_panel_power_on_interactive(ctx)) {
+		/*
+		 * If we are transitioning from interactive to low
+		 * power, then we need to send events to the interface
+		 * so that the panel can be configured in low power
+		 * mode.
+		 */
+		send_panel_events = true;
+		if (mdss_panel_is_power_on_ulp(panel_power_state))
+			turn_off_clocks = true;
+	#endif
 	} else {
 		if (mdss_panel_is_power_on_ulp(panel_power_state)) {
 			/*

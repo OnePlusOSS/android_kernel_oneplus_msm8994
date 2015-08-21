@@ -164,7 +164,26 @@ enum fg_mem_data_index {
 	FG_DATA_BATT_ID_INFO,
 	FG_DATA_MAX,
 };
-
+#ifdef VENDOR_EDIT
+typedef enum{
+		/*! Battery is cold 			  */
+		CV_BATTERY_TEMP_REGION__COLD,
+		/*! Battery is little cold				 */
+		CV_BATTERY_TEMP_REGION_LITTLE__COLD,
+		/*! Battery is cool 			  */
+		CV_BATTERY_TEMP_REGION__COOL,
+		 /*! Battery is little cool 			  */
+		CV_BATTERY_TEMP_REGION__LITTLE_COOL,
+		/*! Battery is normal			  */
+		CV_BATTERY_TEMP_REGION__NORMAL,
+		/*! Battery is warm 			  */
+		CV_BATTERY_TEMP_REGION__WARM,
+		/*! Battery is hot				  */
+		CV_BATTERY_TEMP_REGION__HOT,
+		/*! Invalid battery temp region   */
+		CV_BATTERY_TEMP_REGION__INVALID,
+}chg_cv_battery_temp_region_type;
+#endif
 #define SETTING(_idx, _address, _offset, _value)	\
 	[FG_MEM_##_idx] = {				\
 		.address = _address,			\
@@ -174,10 +193,19 @@ enum fg_mem_data_index {
 
 static struct fg_mem_setting settings[FG_MEM_SETTING_MAX] = {
 	/*       ID                    Address, Offset, Value*/
+#ifdef VENDOR_EDIT
+/* yangfangbiao@oneplus.cn, 2015/03/11  Modify for PMI8994 charge*/
+
+	SETTING(SOFT_COLD,       0x454,   0,      -100),
+	SETTING(SOFT_HOT,        0x454,   1,      550),
+	SETTING(HARD_COLD,       0x454,   2,      -150),
+	SETTING(HARD_HOT,        0x454,   3,      600),
+#else
 	SETTING(SOFT_COLD,       0x454,   0,      100),
 	SETTING(SOFT_HOT,        0x454,   1,      400),
 	SETTING(HARD_COLD,       0x454,   2,      50),
 	SETTING(HARD_HOT,        0x454,   3,      450),
+#endif /*VENDOR_EDIT*/
 	SETTING(RESUME_SOC,      0x45C,   1,      0),
 	SETTING(BCL_LM_THRESHOLD, 0x47C,   2,      50),
 	SETTING(BCL_MH_THRESHOLD, 0x47C,   3,      752),
@@ -377,6 +405,12 @@ struct fg_chip {
 	struct fg_learning_data	learning_data;
 	struct alarm		fg_cap_learning_alarm;
 	struct work_struct	fg_cap_learning_work;
+	#ifdef VENDOR_EDIT
+	int saltate_counter;
+	int soc_pre;
+	int  batt_vol_pre;
+	unsigned long		soc_continue_time;
+	#endif
 };
 
 /* FG_MEMIF DEBUGFS structures */
@@ -445,7 +479,9 @@ static char *fg_supplicants[] = {
 	"bcl",
 	"fg_adc"
 };
-
+#ifdef VENDOR_EDIT
+static int get_sram_prop_now(struct fg_chip *chip, unsigned int type);
+#endif
 #define DEBUG_PRINT_BUFFER_SIZE 64
 static void fill_string(char *str, size_t str_len, u8 *buf, int buf_len)
 {
@@ -1096,6 +1132,233 @@ static bool fg_is_batt_empty(struct fg_chip *chip)
 
 	return (fg_soc_sts & SOC_EMPTY) != 0;
 }
+#ifdef VENDOR_EDIT
+#define	SOC_SHUTDOWN_VALID_LIMITS	20
+#define TEN_MINUTES		600
+#define CAPACITY_SALTATE_COUNTER_60				30//40	1min
+#define CAPACITY_SALTATE_COUNTER_95				70//60	2.5min
+#define CAPACITY_SALTATE_COUNTER_FULL			200//150//120	5min
+#define CAPACITY_SALTATE_COUNTER_CHARGING_TERM	30//30	1min
+#define CAPACITY_SALTATE_COUNTER 4
+#define CAPACITY_SALTATE_COUNTER_NOT_CHARGING	24// >=40sec
+#define LOW_BATTERY_PROTECT_VOLTAGE	3450*1000
+#define CAPACITY_CALIBRATE_TIME_60_PERCENT	45  //45s
+
+extern int get_charging_status(void);
+extern int fuelgauge_battery_temp_region_get(void);
+extern int load_soc(void);
+extern void backup_soc_ex(int soc);
+extern bool get_oem_charge_done_status(void);
+
+static int fg_soc_calibrate(struct fg_chip *di, int soc)
+{
+	union power_supply_propval ret = {0,};
+	unsigned int soc_calib;
+	int counter_temp = 0;
+	static int charging_status = 0;
+	static int charging_status_pre = 0;
+	static int i=0;
+	int soc_load;
+	int soc_temp;
+	static unsigned long	soc_pre_time;
+	unsigned long	  soc_current_time,time_last;
+	if(4> i)/* FG may do not prepare soc ok,  do not calibrate soc 3 times*/
+	  {
+		i=i+1;
+		if(4==i)
+		  {
+			soc_load = load_soc();		//get the soc before reboot
+
+			di->batt_psy = power_supply_get_by_name("battery");
+			if(di->batt_psy ){
+
+				//soc_load = load_soc();
+				pr_err("soc=%d,soc_load:%d\n", soc,soc_load);
+			if (soc_load == -1) {
+				//get last soc error
+				di->soc_pre = soc;
+			} else if(abs(soc - soc_load) > SOC_SHUTDOWN_VALID_LIMITS) {
+				//the battery maybe changed
+					di->soc_pre = soc;
+				} else {
+				//compare the soc and the last soc
+				if(soc_load > soc +3) {
+					di->soc_pre = soc_load -1;
+				} else {
+					di->soc_pre = soc_load;
+				}
+			}
+
+			if (!di->batt_psy) {
+
+				pr_info(": %d di->soc_pre %d\n",__LINE__,di->soc_pre);
+				return di->soc_pre;
+			}
+			//store the soc when boot first time
+				backup_soc_ex(di->soc_pre);
+			get_current_time(&soc_pre_time);
+		  }
+		}
+	else
+	    return soc;
+	}
+
+	soc_temp  = di->soc_pre;
+
+	if(di->batt_psy){
+		ret.intval = get_charging_status();
+		di->batt_vol_pre= get_sram_prop_now(di, FG_DATA_VOLTAGE);
+		if((fuelgauge_battery_temp_region_get() == CV_BATTERY_TEMP_REGION__LITTLE_COOL
+								|| fuelgauge_battery_temp_region_get() == CV_BATTERY_TEMP_REGION__NORMAL)&&(get_oem_charge_done_status( )==true))
+		{
+			ret.intval = POWER_SUPPLY_STATUS_FULL; /* when battery temperature is cool or normal,we disable charge after charge done,in this case battery status must deal with FULL*/
+
+		}
+
+		if(ret.intval == POWER_SUPPLY_STATUS_CHARGING || ret.intval == POWER_SUPPLY_STATUS_FULL) { // is charging
+			charging_status = 1;
+		} else {
+			charging_status = 0;
+		}
+		if (charging_status ^ charging_status_pre) {
+			charging_status_pre = charging_status;
+			di->saltate_counter = 0;
+		}
+		get_current_time(&soc_current_time);
+		time_last= soc_current_time - soc_pre_time;
+		if (charging_status) { // is charging
+			if (ret.intval == POWER_SUPPLY_STATUS_FULL) {
+				soc_calib = di->soc_pre;
+				if (di->soc_pre < 100
+						&& (fuelgauge_battery_temp_region_get() == CV_BATTERY_TEMP_REGION__LITTLE_COOL
+						|| fuelgauge_battery_temp_region_get() == CV_BATTERY_TEMP_REGION__NORMAL)) {
+					if (di->saltate_counter < CAPACITY_SALTATE_COUNTER_CHARGING_TERM) {
+						di->saltate_counter++;
+					} else {
+						soc_calib = di->soc_pre + 1;
+						di->saltate_counter = 0;
+					}
+				}
+			} else {
+
+				if(soc - di->soc_pre > 0) {
+				di->saltate_counter++;
+				if(di->saltate_counter < CAPACITY_SALTATE_COUNTER)
+					return di->soc_pre;
+				else
+					di->saltate_counter = 0;
+					soc_calib = di->soc_pre + 1;
+			}
+			else if(soc < (di->soc_pre - 1)){
+					di->saltate_counter++;
+
+				if (di->soc_pre == 100) {
+					counter_temp = CAPACITY_SALTATE_COUNTER_FULL;//t>=5min
+				} else if (di->soc_pre > 95) {
+					counter_temp = CAPACITY_SALTATE_COUNTER_95;///t>=2.5min
+				} else if (di->soc_pre > 60) {
+					counter_temp = CAPACITY_SALTATE_COUNTER_60;//t>=1min
+				}else {
+					if(time_last > CAPACITY_CALIBRATE_TIME_60_PERCENT && (soc - di->soc_pre)<0)
+							counter_temp = 0;
+					else
+					counter_temp = CAPACITY_SALTATE_COUNTER_NOT_CHARGING;//t>=40sec
+				}
+				//pr_err("YFB ELSE counter_temp=%d\n",counter_temp);
+				/* when batt_vol is too low(and soc is jumping), decrease faster to avoid dead battery shutdown */
+					if(di->batt_vol_pre <= LOW_BATTERY_PROTECT_VOLTAGE && di->batt_vol_pre > 2500 * 1000 && di->soc_pre <= 10) {
+						if (get_sram_prop_now(di, FG_DATA_VOLTAGE) <= LOW_BATTERY_PROTECT_VOLTAGE && get_sram_prop_now(di, FG_DATA_VOLTAGE) > 2500 * 1000) {//check again
+						counter_temp = CAPACITY_SALTATE_COUNTER - 1;//about 9s
+					}
+				}
+
+				if(di->saltate_counter < counter_temp)
+					return di->soc_pre;
+				else
+					di->saltate_counter = 0;
+
+				soc_calib = di->soc_pre - 1;
+
+			}
+			else if((soc ==0 && soc < di->soc_pre )&&(di->soc_pre <=2 )){
+				di->saltate_counter++;
+				if(time_last > CAPACITY_CALIBRATE_TIME_60_PERCENT && (soc - di->soc_pre)<0)
+					counter_temp = 0;
+				else
+				counter_temp = CAPACITY_SALTATE_COUNTER_NOT_CHARGING;//t>=40sec
+				if(di->saltate_counter < counter_temp)
+					return di->soc_pre;
+				else
+					di->saltate_counter = 0;
+						soc_calib = di->soc_pre - 1;
+			}
+			else {
+				soc_calib = di->soc_pre;
+			}
+
+
+		}
+		} else { // not charging
+			if ((abs(soc - di->soc_pre) >  0)
+						|| (di->batt_vol_pre <= LOW_BATTERY_PROTECT_VOLTAGE && di->batt_vol_pre > 2500 * 1000)) {// add for batt_vol is too low but soc is not jumping
+				di->saltate_counter++;
+				if(di->soc_pre == 100) {
+					counter_temp = CAPACITY_SALTATE_COUNTER_FULL;//t>=5min
+				} else if (di->soc_pre > 95) {
+					counter_temp = CAPACITY_SALTATE_COUNTER_95;///t>=2.5min
+				} else if (di->soc_pre > 60) {
+					counter_temp = CAPACITY_SALTATE_COUNTER_60;//t>=1min
+				} else {
+					if(time_last > CAPACITY_CALIBRATE_TIME_60_PERCENT && (soc - di->soc_pre)<0)
+						{
+						counter_temp = 0;
+					}
+					else
+					counter_temp = CAPACITY_SALTATE_COUNTER_NOT_CHARGING;//t>=40sec
+				}
+				/* when batt_vol is too low(and soc is jumping), decrease faster to avoid dead battery shutdown */
+					if (di->batt_vol_pre <= LOW_BATTERY_PROTECT_VOLTAGE && di->batt_vol_pre > 2500 * 1000 && di->soc_pre <= 10) {
+						if (get_sram_prop_now(di, FG_DATA_VOLTAGE) <= LOW_BATTERY_PROTECT_VOLTAGE && get_sram_prop_now(di, FG_DATA_VOLTAGE) > 2500 * 1000) {//check again
+						counter_temp = CAPACITY_SALTATE_COUNTER - 1;//about 9s
+					}
+				}
+
+				if(di->saltate_counter < counter_temp)
+					return di->soc_pre;
+				else
+					di->saltate_counter = 0;
+			}
+			else
+				di->saltate_counter = 0;
+
+			if(soc < di->soc_pre)
+				soc_calib = di->soc_pre - 1;
+				else if (di->batt_vol_pre <= LOW_BATTERY_PROTECT_VOLTAGE && di->batt_vol_pre > 2500 * 1000 && di->soc_pre > 0)// add for batt_vol is too low but soc is not jumping
+				soc_calib = di->soc_pre - 1;
+			else
+				soc_calib = di->soc_pre;
+
+		}
+	} else {
+
+		soc_calib = soc;
+	}
+	if(soc_calib > 100)
+		soc_calib = 100;
+	if(soc_calib < 0)
+		soc_calib = 0;
+	di->soc_pre = soc_calib;
+
+	if(soc_temp  !=  soc_calib) {
+		get_current_time(&soc_pre_time);
+		//store when soc changed
+			backup_soc_ex(soc_calib);
+		pr_info("soc:%d, soc_calib:%d\n", soc, soc_calib);
+	}
+
+	return soc_calib;
+}
+#endif
 
 #define EMPTY_CAPACITY		0
 #define DEFAULT_CAPACITY	50
@@ -1108,12 +1371,27 @@ static int get_prop_capacity(struct fg_chip *chip)
 	if (chip->battery_missing)
 		return MISSING_CAPACITY;
 	if (!chip->profile_loaded && !chip->use_otp_profile)
-		return DEFAULT_CAPACITY;
+		{
+#ifdef VENDOR_EDIT /* modify to fix bug:SND-2282,*/
+       capacity=load_soc();
+    if(capacity >= 0)
+		return capacity;//report backup soc
+	else
+        return DEFAULT_CAPACITY;
+#else
+       return DEFAULT_CAPACITY;
+#endif
+		}
 	if (chip->soc_empty) {
 		if (fg_debug_mask & FG_POWER_SUPPLY)
 			pr_info_ratelimited("capacity: %d, EMPTY\n",
 					EMPTY_CAPACITY);
+       #ifdef VENDOR_EDIT
+         capacity =0;
+	     goto  OEM_SOC_CALIBRATE;
+       #else
 		return EMPTY_CAPACITY;
+       #endif
 	}
 	while (tries < MAX_TRIES_SOC) {
 		rc = fg_read(chip, cap,
@@ -1141,6 +1419,10 @@ static int get_prop_capacity(struct fg_chip *chip)
 	if (fg_debug_mask & FG_POWER_SUPPLY)
 		pr_info_ratelimited("capacity: %d, raw: 0x%02x\n",
 				capacity, cap[0]);
+	#ifdef VENDOR_EDIT
+	OEM_SOC_CALIBRATE:
+	capacity =fg_soc_calibrate(chip, capacity);
+	#endif
 	return capacity;
 }
 
@@ -1156,6 +1438,7 @@ static u8 bias_ua[] = {
 static int64_t get_batt_id(unsigned int battery_id_uv, u8 bid_info)
 {
 	u64 battery_id_ohm;
+	pr_info("qpnp-fg battery_id_uv= %d\n",battery_id_uv);
 
 	if (!(bid_info & 0x3) >= 1) {
 		pr_err("can't determine battery id %d\n", bid_info);
@@ -1163,7 +1446,7 @@ static int64_t get_batt_id(unsigned int battery_id_uv, u8 bid_info)
 	}
 
 	battery_id_ohm = div_u64(battery_id_uv, bias_ua[bid_info & 0x3]);
-
+	pr_info("qpnp-fg battery_id_ohm= %lld\n",battery_id_ohm);
 	return battery_id_ohm;
 }
 
@@ -1312,7 +1595,11 @@ static int64_t twos_compliment_extend(int64_t val, int nbytes)
 #define LSB_8B		9800
 #define TEMP_LSB_16B	625
 #define DECIKELVIN	2730
+#ifdef VENDOR_EDIT
+#define SRAM_PERIOD_UPDATE_MS		5000
+#else
 #define SRAM_PERIOD_UPDATE_MS		30000
+#endif
 #define SRAM_PERIOD_NO_ID_UPDATE_MS	100
 #define FULL_PERCENT_28BIT		0xFFFFFFF
 #define FULL_PERCENT_3B			0xFFFFFF
@@ -2470,7 +2757,7 @@ static void dump_sram(struct work_struct *work)
 	for (i = 0; i < SRAM_DUMP_LEN; i += 4) {
 		str[0] = '\0';
 		fill_string(str, DEBUG_PRINT_BUFFER_SIZE, buffer + i, 4);
-		pr_info("%03X %s\n", SRAM_DUMP_START + i, str);
+		pr_debug("%03X %s\n", SRAM_DUMP_START + i, str);
 	}
 	devm_kfree(chip->dev, buffer);
 }
@@ -2937,7 +3224,6 @@ wait:
 		rc = 0;
 		goto no_profile;
 	}
-
 	if (len != FG_PROFILE_LEN) {
 		pr_err("battery profile incorrect size: %d\n", len);
 		rc = -EINVAL;
@@ -4439,6 +4725,13 @@ static int fg_probe(struct spmi_device *spmi)
 			goto power_supply_unregister;
 		}
 	}
+#ifdef VENDOR_EDIT
+	#define REDO_BATID_DURING_FIRST_EST	BIT(4)
+			reg = REDO_BATID_DURING_FIRST_EST | RESTART_GO;
+			rc = fg_masked_write(chip, chip->soc_base + SOC_RESTART,
+			reg, reg, 1);
+			pr_info("%s == redetect battery ID rc = %d\n",__func__,rc);
+#endif/* VENDOR_EDIT */
 
 	schedule_work(&chip->init_work);
 

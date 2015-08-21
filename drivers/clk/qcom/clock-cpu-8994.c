@@ -1518,6 +1518,11 @@ static int add_opp(struct clk *c, struct device *cpudev, struct device *vregdev,
 	return 0;
 }
 
+static unsigned long ftm_apc0_fmax;
+static unsigned long ftm_apc1_fmax;
+module_param(ftm_apc0_fmax, ulong, 0444);
+module_param(ftm_apc1_fmax, ulong, 0444);
+
 static void print_opp_table(int a53_cpu, int a57_cpu)
 {
 	struct opp *oppfmax, *oppfmin;
@@ -1544,6 +1549,8 @@ static void print_opp_table(int a53_cpu, int a57_cpu)
 					     true);
 	oppfmin = dev_pm_opp_find_freq_exact(get_cpu_device(a57_cpu), apc1_fmin,
 					     true);
+	ftm_apc0_fmax = apc0_fmax/1000;
+	ftm_apc1_fmax = apc1_fmax/1000;
 	pr_info("clock_cpu: a57: OPP voltage for %lu: %lu\n", apc1_fmin,
 		dev_pm_opp_get_voltage(oppfmin));
 	pr_info("clock_cpu: a57: OPP voltage for %lu: %lu\n", apc1_fmax,
@@ -1644,6 +1651,14 @@ static void init_v2_data(void)
 
 static int a57speedbin;
 static int a53speedbin;
+module_param(a57speedbin, int, 0444);
+module_param(a53speedbin, int, 0444);
+
+int get_chipset_a57speedbin(void)
+{
+	return a57speedbin;
+}
+EXPORT_SYMBOL(get_chipset_a57speedbin);
 struct platform_device *cpu_clock_8994_dev;
 
 /* Low power mux code begins here */

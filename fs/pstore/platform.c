@@ -36,6 +36,10 @@
 
 #include "internal.h"
 
+#ifdef VENDOR_EDIT  // modify by yangrujin@bsp for ramoops memcpy addr alignment 2015-05-27
+void *memcpy_pstore(void *dest, const void *src, size_t count);
+#endif
+
 /*
  * We defer making "oops" entries appear in pstore - see
  * whether the system is actually still running well enough
@@ -195,7 +199,11 @@ static void pstore_console_write(struct console *con, const char *s, unsigned c)
 		} else {
 			spin_lock_irqsave(&psinfo->buf_lock, flags);
 		}
+#ifdef VENDOR_EDIT  // modify by yangrujin@bsp for ramoops memcpy addr alignment 2015-05-27
+		memcpy_pstore(psinfo->buf, s, c);
+#else
 		memcpy(psinfo->buf, s, c);
+#endif
 		psinfo->write(PSTORE_TYPE_CONSOLE, 0, &id, 0, 0, c, psinfo);
 		spin_unlock_irqrestore(&psinfo->buf_lock, flags);
 		s += c;

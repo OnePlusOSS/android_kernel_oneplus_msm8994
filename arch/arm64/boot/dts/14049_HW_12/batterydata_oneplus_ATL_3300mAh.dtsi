@@ -1,0 +1,49 @@
+qcom,oneplus_3200mah {
+	qcom,max-voltage-uv = <4320000>;
+	qcom,nom-batt-capacity-mah = <3300>;
+	qcom,v-cutoff-uv = <3600000>;
+	qcom,chg-term-ua = <150000>;
+	qcom,batt-id-kohm = <1>;
+	qcom,battery-beta = <0>;
+	qcom,battery-type = "ATL";
+	qcom,rslow-comp-along-soc-c1-ch-milli = <2464>;
+	qcom,rslow-comp-along-soc-c2-ch-milli = <2876>;
+	qcom,rs-to-rslow-charge-fix-milli = <883>;
+	qcom,rslow-comp-ch-fix-th-milli = <600>;
+	qcom,checksum = <0xA6ED>;
+	qcom,gui-version = "PMI8994GUI - 2.1.6.2";
+	qcom,fg-profile-data = [
+		 D2 83 01 7C
+		 0B 80 18 75
+		 48 83 84 60
+		 EB 80 F8 8C
+		 21 82 70 99
+		 31 BC 6F C8
+		 55 0E E4 83
+		 17 7C D7 7B
+		 9C 74 40 83
+		 05 73 E1 77
+		 73 66 49 82
+		 38 99 2D BC
+		 83 C8 57 0D
+		 DC 0C DA 59
+		 08 6C 71 FD
+		 3C 3E B8 3D
+		 7B 40 00 00
+		 26 4C 36 3A
+		 6E 33 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 06 70 BF 6A
+		 61 64 41 81
+		 3F 75 B8 68
+		 22 60 26 81
+		 95 74 7E 63
+		 99 77 BE B0
+		 1E 39 69 8E
+		 66 A0 71 0C
+		 28 00 FF 36
+		 F0 11 30 03
+		 00 00 00 00
+	];
+};

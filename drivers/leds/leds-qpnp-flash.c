@@ -25,7 +25,12 @@
 #include <linux/workqueue.h>
 #include <linux/power_supply.h>
 #include "leds.h"
-
+#ifdef VENDOR_EDIT
+//added by zhangxiaowei@camera 20150413  for product mode flashlight
+#include <asm/uaccess.h>
+#include <linux/proc_fs.h>
+struct qpnp_flash_led *proc_led =NULL ;
+#endif /*VENDOR_EDIT*/ 
 #define FLASH_LED_PERIPHERAL_SUBTYPE(base)			(base + 0x05)
 #define FLASH_SAFETY_TIMER(base)				(base + 0x40)
 #define FLASH_MAX_CURRENT(base)					(base + 0x41)
@@ -184,7 +189,13 @@ struct flash_led_platform_data {
 	bool				hdrm_sns_ch1_en;
 	bool				power_detect_en;
 };
+#ifdef VENDOR_EDIT
+//added by zhangxiaowei@camera 20150413  for product mode flashlight
 
+
+bool flash_blink_state;
+int led_flash_state;
+#endif /*VENDOR_EDIT*/ 
 /*
  * Flash LED data structure containing flash LED attributes
  */
@@ -1288,7 +1299,140 @@ static int qpnp_flash_led_parse_common_dt(
 
 	return 0;
 }
+#ifdef VENDOR_EDIT
+//added by zhangxiaowei@camera 20150413  for product mode flashlight
 
+static void led_flash_blink_work(struct work_struct *work)
+{
+
+    if (flash_blink_state) {
+            proc_led->flash_node[0].cdev.brightness = 53;
+
+        qpnp_flash_led_work(&proc_led->flash_node[0].work);
+            proc_led->flash_node[1].cdev.brightness = 53;
+
+        qpnp_flash_led_work(&proc_led->flash_node[1].work);  
+        schedule_delayed_work(&proc_led->flash_node[1].dwork, msecs_to_jiffies(1000));
+    } else {
+            proc_led->flash_node[0].cdev.brightness = 0;
+        qpnp_flash_led_work(&proc_led->flash_node[0].work);
+		
+            proc_led->flash_node[1].cdev.brightness = 0;
+
+        qpnp_flash_led_work(&proc_led->flash_node[1].work);  
+        schedule_delayed_work(&proc_led->flash_node[1].dwork, msecs_to_jiffies(1000)); 
+
+    }
+
+    flash_blink_state = !flash_blink_state;
+	
+
+	return;
+}
+static void led_flash_blink_stop(void)
+{
+
+    if (led_flash_state == 2) {
+        flash_blink_state = false;
+
+        cancel_delayed_work_sync(&proc_led->flash_node[1].dwork);
+
+        proc_led->flash_node[0].cdev.brightness = 0;
+        proc_led->flash_node[1].cdev.brightness = 0;
+        proc_led->flash_node[2].cdev.brightness = 0;
+        proc_led->flash_node[3].cdev.brightness = 0;        
+  
+        qpnp_flash_led_work(&proc_led->flash_node[0].work);
+        qpnp_flash_led_work(&proc_led->flash_node[1].work);
+        qpnp_flash_led_work(&proc_led->flash_node[2].work);
+        qpnp_flash_led_work(&proc_led->flash_node[3].work);		
+       
+    } else if(led_flash_state == 1 ) {
+        proc_led->flash_node[0].cdev.brightness = 0;
+        proc_led->flash_node[1].cdev.brightness = 0;
+        proc_led->flash_node[2].cdev.brightness = 0;
+        proc_led->flash_node[3].cdev.brightness = 0;        
+
+        qpnp_flash_led_work(&proc_led->flash_node[0].work);
+        qpnp_flash_led_work(&proc_led->flash_node[1].work);
+        qpnp_flash_led_work(&proc_led->flash_node[2].work);
+        qpnp_flash_led_work(&proc_led->flash_node[3].work);        
+    } else {
+        proc_led->flash_node[0].cdev.brightness = 0;
+        proc_led->flash_node[1].cdev.brightness = 0;
+        proc_led->flash_node[2].cdev.brightness = 0;
+        proc_led->flash_node[3].cdev.brightness = 0;        
+
+        qpnp_flash_led_work(&proc_led->flash_node[0].work);
+        qpnp_flash_led_work(&proc_led->flash_node[1].work);
+        qpnp_flash_led_work(&proc_led->flash_node[2].work);
+        qpnp_flash_led_work(&proc_led->flash_node[3].work);       
+    }
+    
+    led_flash_state = 0;
+
+}
+int led_test_mode;
+
+static ssize_t flash_proc_read(struct file *filp, char __user *buff,
+                        	size_t len, loff_t *data)
+
+{
+    char value[2] = {0};
+
+    snprintf(value, sizeof(value), "%d", led_test_mode);
+    return simple_read_from_buffer(buff, len, data, value,1);
+}
+
+static ssize_t flash_proc_write(struct file *filp, const char __user *buff,
+                        	size_t len, loff_t *data)
+{
+	char temp[1] = {0};
+	int state = 0;
+
+	if (copy_from_user(temp, buff, 1)) 
+    return -EFAULT; 
+    sscanf(temp, "%d", &state);
+
+    /*stop it first*/
+
+    led_flash_blink_stop();//zxw a
+
+    if (state == 2) {
+        /*blink*/
+        flash_blink_state = true;
+
+        INIT_DELAYED_WORK(&proc_led->flash_node[1].dwork, led_flash_blink_work); 
+        schedule_delayed_work(&proc_led->flash_node[1].dwork, msecs_to_jiffies(500));
+	} else if(state == 1) {
+	    /*lamp*/
+
+       led_flash_blink_stop();
+
+            proc_led->flash_node[2].cdev.brightness = 53;
+
+        qpnp_flash_led_work(&proc_led->flash_node[2].work);
+
+            proc_led->flash_node[3].cdev.brightness = 53;
+
+        qpnp_flash_led_work(&proc_led->flash_node[3].work);   
+	}
+	else
+	{ 
+
+     led_flash_blink_stop();
+	}
+
+    led_flash_state = state;
+	return len;
+}
+
+static const struct file_operations led_test_fops = {
+    .owner = THIS_MODULE,
+    .read = flash_proc_read,
+    .write = flash_proc_write,
+};
+#endif /*VENDOR_EDIT*/ 
 static int qpnp_flash_led_probe(struct spmi_device *spmi)
 {
 	struct qpnp_flash_led *led;
@@ -1296,7 +1440,10 @@ static int qpnp_flash_led_probe(struct spmi_device *spmi)
 	struct device_node *node, *temp;
 	int rc, i = 0, j, num_leds = 0;
 	u32 val;
-
+#ifdef VENDOR_EDIT
+//added by zhangxiaowei@camera 20150413  for product mode flashlight
+	struct proc_dir_entry *proc_entry = NULL;
+#endif /*VENDOR_EDIT*/ 
 	node = spmi->dev.of_node;
 	if (node == NULL) {
 		dev_info(&spmi->dev, "No flash device defined\n");
@@ -1431,7 +1578,20 @@ static int qpnp_flash_led_probe(struct spmi_device *spmi)
 	led->num_leds = i;
 
 	dev_set_drvdata(&spmi->dev, led);
+#ifdef VENDOR_EDIT
+//added by zhangxiaowei@camera 20150413  for product mode flashlight
+        if (led->flash_node->id == FLASH_LED_0 ||
+           led->flash_node->id == FLASH_LED_1) {
 
+             proc_entry = proc_create_data( "qcom_flash", 0666, NULL,&led_test_fops, NULL);
+
+             if (proc_entry == NULL) {
+               pr_err("proc_entry create failed\n");
+               return rc;
+             }				
+		}
+proc_led=led;		
+#endif /*VENDOR_EDIT*/ 	
 	return 0;
 
 error_led_register:

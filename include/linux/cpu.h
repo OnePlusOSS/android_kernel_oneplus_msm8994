@@ -279,6 +279,13 @@ static inline void enable_nonboot_cpus(void) {}
 
 struct cpu_pwr_stats *get_cpu_pwr_stats(void);
 void trigger_cpu_pwr_stats_calc(void);
+#ifdef VENDOR_EDIT
+/* ic, declaration for core ctrl extension */
+unsigned int power_cost_at_freq_at_temp(
+	unsigned int cpu,
+	unsigned int freq,
+	long temp);
+#endif
 
 enum cpuhp_state {
 	CPUHP_OFFLINE,

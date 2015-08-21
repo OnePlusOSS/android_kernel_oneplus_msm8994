@@ -192,6 +192,7 @@ static enum bcl_threshold_state bcl_vph_state = BCL_THRESHOLD_DISABLED,
 static DEFINE_MUTEX(bcl_notify_mutex);
 static uint32_t bcl_hotplug_request, bcl_hotplug_mask, bcl_soc_hotplug_mask;
 static uint32_t bcl_frequency_mask;
+static bool bcl_hotplug_thrash_free;
 static struct work_struct bcl_hotplug_work;
 static DEFINE_MUTEX(bcl_hotplug_mutex);
 static bool bcl_hotplug_enabled;
@@ -245,14 +246,22 @@ static void __ref bcl_handle_hotplug(struct work_struct *work)
 		} else {
 			if (cpu_online(_cpu))
 				continue;
-			ret = cpu_up(_cpu);
-			if (ret)
-				pr_err("Error %d onlining core %d\n",
-					ret, _cpu);
-			else
-				pr_info("Allow Online CPU:%d\n", _cpu);
+
+			/* let actual demand decide it rather than free run */
+			if (!bcl_hotplug_thrash_free) {
+				ret = cpu_up(_cpu);
+				if (ret)
+					pr_err("Error %d onlining core %d\n",
+						ret, _cpu);
+				else
+					pr_info("Allow Online CPU:%d\n", _cpu);
+			}
 		}
 	}
+
+	/* force online mask to be refreshed next time */
+	if (bcl_hotplug_thrash_free)
+		cpumask_clear(bcl_cpu_online_mask);
 
 	mutex_unlock(&bcl_hotplug_mutex);
 	return;
@@ -900,6 +909,7 @@ show_bcl(ibat_state, bcl_ibat_state, "%d\n")
 show_bcl(hotplug_mask, bcl_hotplug_mask, "%d\n")
 show_bcl(hotplug_soc_mask, bcl_soc_hotplug_mask, "%d\n")
 show_bcl(hotplug_status, bcl_hotplug_request, "%d\n")
+show_bcl(hotplug_thrash_free, bcl_hotplug_thrash_free, "%d\n");
 
 static ssize_t
 mode_show(struct device *dev, struct device_attribute *attr, char *buf)
@@ -1256,6 +1266,25 @@ static ssize_t hotplug_soc_mask_store(struct device *dev,
 
 	return count;
 }
+
+static ssize_t hotplug_thrash_free_store(
+	struct device *dev,
+	struct device_attribute *attr,
+	const char *buf, size_t count)
+{
+	int ret = 0, val = 0;
+
+	ret = kstrtoint(buf, 10, &val);
+	if (ret || (val < 0))
+		return -EINVAL;
+
+	bcl_hotplug_thrash_free = val;
+	pr_info("bcl hotplug thrash-free enable: %d\n",
+		bcl_hotplug_thrash_free);
+
+	return count;
+}
+
 /*
  * BCL device attributes
  */
@@ -1298,6 +1327,8 @@ static struct device_attribute btm_dev_attr[] = {
 	__ATTR(hotplug_mask, 0644, hotplug_mask_show, hotplug_mask_store),
 	__ATTR(hotplug_soc_mask, 0644, hotplug_soc_mask_show,
 		hotplug_soc_mask_store),
+	__ATTR(hotplug_thrash_free, 0644, hotplug_thrash_free_show,
+		hotplug_thrash_free_store),
 };
 
 static int create_bcl_sysfs(struct bcl_context *bcl)
@@ -1738,6 +1769,7 @@ static int bcl_probe(struct platform_device *pdev)
 					 "qcom,bcl-hotplug-list");
 	bcl_soc_hotplug_mask = get_mask_from_core_handle(pdev,
 					 "qcom,bcl-soc-hotplug-list");
+	bcl_hotplug_thrash_free = 0;
 
 	if (!bcl_hotplug_mask && !bcl_soc_hotplug_mask)
 		bcl_hotplug_enabled = false;

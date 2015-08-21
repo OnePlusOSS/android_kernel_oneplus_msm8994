@@ -44,6 +44,11 @@ struct msm_eeprom_ctrl_t {
 	uint8_t is_supported;
 	struct msm_eeprom_board_info *eboard_info;
 	uint32_t subdev_id;
+//Add by likelong@camera 2015.5.19 to reduce the device bring up time start
+#ifdef VENDOR_EDIT
+	struct work_struct read_work;
+#endif
+//Add by likelong@camera 2015.5.19 to reduce the device bring up time end
 };
 
 #endif

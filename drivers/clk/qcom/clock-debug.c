@@ -534,6 +534,10 @@ static void clock_measure_add(struct clk *clock)
 				&clock_measure_fops);
 }
 
+//#ifdef VENDOR_EDIT //changhua add for control spi12 ahb,qup in fpc1020_main.c sysfs
+struct clk* blsp2_ahb_clk;
+struct clk* blsp2_qup6_spi_clk;
+//#endif
 static int clock_debug_add(struct clk *clock)
 {
 	char temp[50], *ptr;
@@ -545,7 +549,19 @@ static int clock_debug_add(struct clk *clock)
 	strlcpy(temp, clock->dbg_name, ARRAY_SIZE(temp));
 	for (ptr = temp; *ptr; ptr++)
 		*ptr = tolower(*ptr);
-
+		
+    //#ifdef VENDOR_EDIT  //changhua add for control spi12 ahb,qup in fpc1020_main.c sysfs
+    //printk("%s : %s \n",__func__,temp);
+    if(strcmp(temp,"gcc_blsp2_ahb_clk")==0)
+    {   printk("%s : gcc_blsp2_ahb_clk \n",__func__);  
+        blsp2_ahb_clk=clock;
+    }
+    if(strcmp(temp,"gcc_blsp2_qup6_spi_apps_clk")==0)
+    {   printk("%s : gcc_blsp2_qup6_spi_apps_clk \n",__func__);  
+        blsp2_qup6_spi_clk=clock;
+    }      
+    //#endif
+    
 	clk_dir = debugfs_create_dir(temp, debugfs_base);
 	if (!clk_dir)
 		return -ENOMEM;

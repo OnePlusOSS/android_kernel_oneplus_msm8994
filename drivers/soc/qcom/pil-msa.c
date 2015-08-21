@@ -57,11 +57,14 @@
 
 #define CMD_META_DATA_READY		0x1
 #define CMD_LOAD_READY			0x2
-#define CMD_PILFAIL_NFY_MBA		0xffffdead
+
+//liyunbing@BSP, 2015-05-14, pil load modem fail
+#define CMD_PILFAIL_NFY_MBA 0xffffdead
 
 #define STATUS_META_DATA_AUTH_SUCCESS	0x3
 #define STATUS_AUTH_COMPLETE		0x4
-#define STATUS_MBA_UNLOCKED		0x6
+//liyunbing@BSP, 2015-05-14, pil load modem fail
+#define STATUS_MBA_UNLOCKED 0x6
 
 /* External BHS */
 #define EXTERNAL_BHS_ON			BIT(0)
@@ -278,13 +281,16 @@ int pil_mss_shutdown(struct pil_desc *pil)
 
 	return ret;
 }
+//liyunbing@BSP, 2015-05-14, pil load modem fail
+//int pil_mss_deinit_image(struct pil_desc *pil)
 
 int __pil_mss_deinit_image(struct pil_desc *pil, bool err_path)
 {
 	struct modem_data *drv = dev_get_drvdata(pil->dev);
 	struct q6v5_data *q6_drv = container_of(pil, struct q6v5_data, desc);
 	int ret = 0;
-	s32 status;
+
+        s32 status;
 
 	if (err_path) {
 		writel_relaxed(CMD_PILFAIL_NFY_MBA,

@@ -127,5 +127,9 @@ obj-$(CONFIG_CEPH_FS)		+= ceph/
 obj-$(CONFIG_PSTORE)		+= pstore/
 obj-$(CONFIG_EFIVAR_FS)		+= efivarfs/
 
+#ifdef VENDOR_EDIT
+obj-$(CONFIG_EXFAT_FS)		+= exfat/
+#endif
+
 # Patched by YAFFS
 obj-$(CONFIG_YAFFS_FS)		+= yaffs2/

@@ -268,6 +268,11 @@ void gic_show_pending_irq(void)
 	}
 }
 
+#ifdef VENDOR_EDIT
+/* Zhonglan.sun@ProDrv.CHG,add 2015/1/7  Add for wakeup analysis */
+extern char wakeup_reason[32];
+#endif /* VENDOR_EDIT */
+
 static void gic_show_resume_irq(struct gic_chip_data *gic)
 {
 	unsigned int i;
@@ -299,6 +304,11 @@ static void gic_show_resume_irq(struct gic_chip_data *gic)
 
 		pr_warning("%s: %d triggered %s\n", __func__,
 					i + gic->irq_offset, name);
+#ifdef VENDOR_EDIT
+/* Zhonglan.sun@ProDrv.CHG,add 2015/1/7  Add for wakeup analysis */
+		if(!wakeup_reason[0])
+			strncpy(wakeup_reason,name,sizeof(wakeup_reason) -1);
+#endif /* VENDOR_EDIT */
 	}
 }
 

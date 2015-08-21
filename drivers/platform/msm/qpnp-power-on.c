@@ -27,6 +27,16 @@
 #include <linux/log2.h>
 #include <linux/qpnp/power-on.h>
 
+#ifdef VENDOR_EDIT
+/*Add by yangrujin@bsp 2015/7/30, fix SND-8480 avoid : sometimes, device will goto sleep without respond PWR KEY event*/
+#include <linux/wakelock.h>
+#endif
+
+#ifdef VENDOR_EDIT
+//hefaxi@filesystems, 2015/07/03, add for force dump function
+#include <linux/oem_force_dump.h>
+#endif
+
 #define CREATE_MASK(NUM_BITS, POS) \
 	((unsigned char) (((1 << (NUM_BITS)) - 1) << (POS)))
 #define PON_MASK(MSB_BIT, LSB_BIT) \
@@ -170,6 +180,12 @@ struct qpnp_pon {
 };
 
 static struct qpnp_pon *sys_reset_dev;
+
+#ifdef VENDOR_EDIT
+/*Add by yangrujin@bsp 2015/7/30, fix SND-8480 avoid : sometimes, device will goto sleep without respond PWR KEY event*/
+static struct wake_lock pwr_wakelock;
+#endif
+
 static DEFINE_MUTEX(spon_list_mutex);
 static LIST_HEAD(spon_dev_list);
 
@@ -216,6 +232,174 @@ static const char * const qpnp_poff_reason[] = {
  */
 static int warm_boot;
 module_param(warm_boot, int, 0);
+
+#ifdef VENDOR_EDIT
+static bool created_pwr_on_off_obj;
+
+#define PMIC_SID_NUM 3
+static struct qpnp_pon *g_pon[PMIC_SID_NUM];
+static bool g_is_cold_boot[PMIC_SID_NUM];
+
+static ssize_t pwron_reason_show(struct kobject *kobj, struct kobj_attribute *attr,
+                        char *buf)
+{
+    int i;
+    int j;
+    int index;
+    u8 pon_sts;
+    int rc;
+    char *pbuf = buf;
+    int ret = 0;
+
+    sprintf(pbuf, "qpnp_pon_reason :\n");
+    ret += strlen(pbuf);
+    pbuf += strlen(pbuf);
+
+    for(i=0; i<ARRAY_SIZE(qpnp_pon_reason);i++){
+        sprintf(pbuf, "[%d] : %s\n", i, qpnp_pon_reason[i]);
+        ret += strlen(pbuf);
+        pbuf += strlen(pbuf);
+	}
+
+    for(i=0; i<PMIC_SID_NUM;i++){
+        /* PON reason */
+        if(g_pon[i]==NULL || g_pon[i]->spmi==NULL || g_pon[i]->spmi->ctrl==NULL){
+            continue;
+        }
+
+        rc = spmi_ext_register_readl(g_pon[i]->spmi->ctrl, g_pon[i]->spmi->sid,
+				    QPNP_PON_REASON1(g_pon[i]->base), &pon_sts, 1);
+	    if (rc){
+		    sprintf(pbuf, "PMIC@SID%d: Unable to read PON_RESASON1 reg rc: %d\n", g_pon[i]->spmi->sid, rc);
+		    ret += strlen(pbuf);
+		    pbuf += strlen(pbuf);
+		    continue;
+	    }
+        index = ffs(pon_sts)-1;
+        if (index >= ARRAY_SIZE(qpnp_pon_reason) || index < 0){
+            sprintf(pbuf, "PMIC@SID%d Power-on reason: Unknown and '%s' boot\n",
+                g_pon[i]->spmi->sid, g_is_cold_boot[g_pon[i]->spmi->sid]?"cold":"warm");
+            ret += strlen(pbuf);
+	        pbuf += strlen(pbuf);
+	        continue;
+	    }else{
+	        sprintf(pbuf, "PMIC@SID%d Power-on reason: '%s' boot and ", g_pon[i]->spmi->sid,
+	        g_is_cold_boot[g_pon[i]->spmi->sid]?"cold":"warm");
+	        ret += strlen(pbuf);
+	        pbuf += strlen(pbuf);
+	    }
+
+        for(j=0; j<ARRAY_SIZE(qpnp_pon_reason); j++){
+            index = ((pon_sts>>j)&0x1)?j:-1;
+
+            if(index>=0){
+                 sprintf(pbuf, "[%d] ", index);
+                 ret += strlen(pbuf);
+                 pbuf += strlen(pbuf);
+            }
+        }
+
+	    sprintf(pbuf, "\n");
+	    ret += strlen(pbuf);
+	    pbuf += strlen(pbuf);
+    }
+
+    if(ret){
+        *(buf+ret-1) = '\n';
+    }
+
+    return ret;
+}
+
+static ssize_t pwroff_reason_show(struct kobject *kobj, struct kobj_attribute *attr,
+                        char *buf)
+{
+    int i;
+    int j;
+    int index;
+    int rc;
+    u8 temp_buf[2];
+    u8 poff_sts;
+    char *pbuf = buf;
+    int ret = 0;
+
+    sprintf(pbuf, "qpnp_poff_reason :\n");
+    ret += strlen(pbuf);
+    pbuf += strlen(pbuf);
+
+    for(j=0; j<ARRAY_SIZE(qpnp_poff_reason);j++){
+        sprintf(pbuf, "[%d] : %s\n", j, qpnp_poff_reason[j]);
+        ret += strlen(pbuf);
+        pbuf += strlen(pbuf);
+	}
+
+    for(i=0; i<PMIC_SID_NUM;i++){
+        /* PON reason */
+        if(g_pon[i]==NULL || g_pon[i]->spmi==NULL || g_pon[i]->spmi->ctrl==NULL){
+            continue;
+        }
+
+        /* POFF reason */
+	    rc = spmi_ext_register_readl(g_pon[i]->spmi->ctrl, g_pon[i]->spmi->sid,
+	            QPNP_POFF_REASON1(g_pon[i]->base), temp_buf, 2);
+        if (rc){
+            sprintf(pbuf, "PMIC@SID%d: Unable to read QPNP_POFF_REASON1 reg ret: %d\n", g_pon[i]->spmi->sid, rc);
+            ret += strlen(pbuf);
+            pbuf += strlen(pbuf);
+            continue;
+	    }
+
+        poff_sts = temp_buf[0] | (temp_buf[1] << 8);
+	    index = ffs(poff_sts) - 1;
+
+        if (index >= ARRAY_SIZE(qpnp_poff_reason) || index < 0) {
+	        sprintf(pbuf, "PMIC@SID%d Power-off eason: Unknown\n", g_pon[i]->spmi->sid);
+            ret += strlen(pbuf);
+            pbuf += strlen(pbuf);
+	        continue;
+	    }else{
+	        sprintf(pbuf, "PMIC@SID%d Power-off reason: ", g_pon[i]->spmi->sid);
+	        ret += strlen(pbuf);
+            pbuf += strlen(pbuf);
+        }
+
+        for(j=0; j<ARRAY_SIZE(qpnp_poff_reason); j++){
+            index = ((poff_sts>>j)&0x1)?j:-1;
+            if(index>=0){
+                sprintf(pbuf, "[%d] ", index);
+                ret += strlen(pbuf);
+                pbuf += strlen(pbuf);
+            }
+        }
+
+	    sprintf(pbuf, "\n");
+	    ret += strlen(pbuf);
+        pbuf += strlen(pbuf);
+    }
+
+    if(ret){
+        *(buf+ret-1) = '\n';
+    }
+
+    return ret;
+}
+
+static struct kobj_attribute pwron_reason_attribute =
+        __ATTR(pwron_reason, 0444, pwron_reason_show, NULL);
+static struct kobj_attribute pwroff_reason_attribute =
+        __ATTR(pwroff_reason, 0444, pwroff_reason_show, NULL);
+
+static struct attribute *pwr_on_off_attrs[] = {
+        &pwron_reason_attribute.attr,
+        &pwroff_reason_attribute.attr,
+        NULL,
+};
+
+static struct attribute_group pwr_on_off_attrs_group = {
+        .attrs = pwr_on_off_attrs,
+};
+static struct kobject *pwr_on_off_kobj;
+#endif
 
 static int
 qpnp_pon_masked_write(struct qpnp_pon *pon, u16 addr, u8 mask, u8 val)
@@ -636,8 +820,8 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 		return -EINVAL;
 	}
 
-	pr_debug("PMIC input: code=%d, sts=0x%hhx\n",
-					cfg->key_code, pon_rt_sts);
+	printk("PMIC input: code=%d, sts=0x%hhx, pon_rt_bit=0x%x, cfg->old_state=0x%x\n",
+					cfg->key_code, pon_rt_sts, pon_rt_bit, cfg->old_state);
 	key_status = pon_rt_sts & pon_rt_bit;
 
 	/* simulate press event in case release event occured
@@ -653,6 +837,10 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 
 	cfg->old_state = !!key_status;
 
+#ifdef VENDOR_EDIT
+//hefaxi@filesystems, 2015/07/03, add for force dump function
+    oem_check_force_dump_key(cfg->key_code,key_status);
+#endif
 	return 0;
 }
 
@@ -660,7 +848,10 @@ static irqreturn_t qpnp_kpdpwr_irq(int irq, void *_pon)
 {
 	int rc;
 	struct qpnp_pon *pon = _pon;
-
+#ifdef VENDOR_EDIT
+/*Add by yangrujin@bsp 2015/7/30, fix SND-8480 avoid : sometimes, device will goto sleep without respond PWR KEY event*/
+	wake_lock_timeout(&pwr_wakelock, HZ);
+#endif
 	rc = qpnp_pon_input_dispatch(pon, PON_KPDPWR);
 	if (rc)
 		dev_err(&pon->spmi->dev, "Unable to send input event\n");
@@ -948,6 +1139,10 @@ qpnp_pon_request_irqs(struct qpnp_pon *pon, struct qpnp_pon_config *cfg)
 
 	switch (cfg->pon_type) {
 	case PON_KPDPWR:
+#ifdef VENDOR_EDIT
+/*Add by yangrujin@bsp 2015/7/30, fix SND-8480 avoid : sometimes, device will goto sleep without respond PWR KEY event*/
+		wake_lock_init(&pwr_wakelock, WAKE_LOCK_SUSPEND, "pwr_key");
+#endif
 		rc = devm_request_irq(&pon->spmi->dev, cfg->state_irq,
 							qpnp_kpdpwr_irq,
 				IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
@@ -1607,6 +1802,13 @@ static int qpnp_pon_probe(struct spmi_device *spmi)
 			cold_boot ? "cold" : "warm");
 	}
 
+#ifdef VENDOR_EDIT
+    if((pon->spmi->sid)>=0 && (pon->spmi->sid)<PMIC_SID_NUM){
+        g_pon[pon->spmi->sid] = pon;
+        g_is_cold_boot[pon->spmi->sid] = cold_boot;
+    }
+#endif
+
 	/* POFF reason */
 	rc = spmi_ext_register_readl(pon->spmi->ctrl, pon->spmi->sid,
 				QPNP_POFF_REASON1(pon->base),
@@ -1754,6 +1956,21 @@ static int qpnp_pon_probe(struct spmi_device *spmi)
 					spmi->dev.of_node,
 					"qcom,store-hard-reset-reason");
 
+#ifdef VENDOR_EDIT
+    if(!created_pwr_on_off_obj){
+        pwr_on_off_kobj = kobject_create_and_add("pwr_on_off_reason", NULL);
+        if (!pwr_on_off_kobj){
+            dev_err(&spmi->dev, "kobject_create_and_add for pwr_on_off_reason failed.\n");
+            return -ENOMEM;
+        }
+        if (sysfs_create_group(pwr_on_off_kobj, &pwr_on_off_attrs_group)){
+            dev_err(&spmi->dev, "sysfs_create_group for pwr_on_off_reason failed.\n");
+            kobject_put(pwr_on_off_kobj);
+        }
+        created_pwr_on_off_obj = true;
+    }
+#endif
+
 	qpnp_pon_debugfs_init(spmi);
 	return 0;
 }
@@ -1761,7 +1978,10 @@ static int qpnp_pon_probe(struct spmi_device *spmi)
 static int qpnp_pon_remove(struct spmi_device *spmi)
 {
 	struct qpnp_pon *pon = dev_get_drvdata(&spmi->dev);
-
+#ifdef VENDOR_EDIT
+/*Add by yangrujin@bsp 2015/7/30, fix SND-8480 avoid : sometimes, device will goto sleep without respond PWR KEY event*/
+	wake_lock_destroy(&pwr_wakelock);
+#endif
 	device_remove_file(&spmi->dev, &dev_attr_debounce_us);
 
 	cancel_delayed_work_sync(&pon->bark_work);

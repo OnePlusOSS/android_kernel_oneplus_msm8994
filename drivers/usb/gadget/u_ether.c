@@ -203,7 +203,9 @@ module_param(u_ether_rx_pending_thld, uint, S_IRUGO | S_IWUSR);
 
 #define xprintk(d, level, fmt, args...) \
 	printk(level "%s: " fmt , (d)->net->name , ## args)
-
+//add by jiachenghui for usb debug test
+#undef DEBUG
+//end add by jiachenghui for usb debug test
 #ifdef DEBUG
 #undef DEBUG
 #define DBG(dev, fmt, args...) \

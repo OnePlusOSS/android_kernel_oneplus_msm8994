@@ -1042,7 +1042,24 @@ fb_set_var(struct fb_info *info, struct fb_var_screeninfo *var)
  done:
 	return ret;
 }
-
+/*ykl add debug log*/
+#ifdef VENDOR_EDIT
+void debug_blank(int blank,int start)
+{
+	if(start)
+	{
+			if(blank == FB_BLANK_UNBLANK)
+				printk("blank on start\n");
+			else if(blank == FB_BLANK_POWERDOWN)
+				printk("blank off start\n");
+	}else{
+			if(blank == FB_BLANK_UNBLANK)
+				printk("blank on end\n");
+			else if(blank == FB_BLANK_POWERDOWN)
+				printk("blank off end\n");
+	}
+}
+#endif
 int
 fb_blank(struct fb_info *info, int blank)
 {	
@@ -1054,7 +1071,10 @@ fb_blank(struct fb_info *info, int blank)
 
 	event.info = info;
 	event.data = &blank;
-
+/*ykl add debug log*/
+#ifdef VENDOR_EDIT
+	debug_blank(blank,1);
+#endif
 	early_ret = fb_notifier_call_chain(FB_EARLY_EVENT_BLANK, &event);
 
 	if (info->fbops->fb_blank)
@@ -1070,6 +1090,10 @@ fb_blank(struct fb_info *info, int blank)
 		if (!early_ret)
 			fb_notifier_call_chain(FB_R_EARLY_EVENT_BLANK, &event);
 	}
+/*ykl add debug log*/
+#ifdef VENDOR_EDIT
+	debug_blank(blank,0);
+#endif
 
  	return ret;
 }

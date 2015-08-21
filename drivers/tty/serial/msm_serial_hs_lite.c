@@ -1963,6 +1963,14 @@ static int __init msm_serial_hsl_init(void)
 {
 	int ret;
 
+//add by jiachenghui for unregister uart driver by cmdline, 2015-4-23
+#ifdef VENDOR_EDIT
+	printk("msm_serial_hsl_init:%d\n",console_set_on_cmdline);
+	if(!console_set_on_cmdline)
+		return -EPERM;
+#endif
+//end add by jiachenghui for unregister uart driver by cmdline, 2015-4-23
+
 	ret = uart_register_driver(&msm_hsl_uart_driver);
 	if (unlikely(ret))
 		return ret;

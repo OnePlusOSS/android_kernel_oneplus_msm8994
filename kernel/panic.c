@@ -66,6 +66,12 @@ void __weak panic_smp_self_stop(void)
 		cpu_relax();
 }
 
+//add by jiachenghui for support oem trace,2015/05/09
+#ifdef VENDOR_EDIT
+extern bool is_otrace_on(void);
+#endif  /*VENDOR_EDIT*/
+//end add by jiachenghui for support oem trace,2015/05/09
+
 /**
  *	panic - halt the system
  *	@fmt: The text string to print
@@ -90,6 +96,20 @@ void panic(const char *fmt, ...)
 	 * after the panic_lock is acquired) from invoking panic again.
 	 */
 	local_irq_disable();
+
+//add by jiachenghui for support oem trace,2015/05/09
+#ifdef VENDOR_EDIT
+       pr_info("kernel panic because of %s\n", fmt);
+	if(!is_otrace_on()) {
+             if (strcmp(fmt, "modem") == 0)
+                  kernel_restart("modem");
+             else if (strcmp(fmt, "android") == 0)
+                  kernel_restart("android");
+             else
+                  kernel_restart("kernel");
+	}
+#endif  /*VENDOR_EDIT*/
+//end add by jiachenghui for support oem trace,2015/05/09
 
 	/*
 	 * It's possible to come here directly from a panic-assertion and
