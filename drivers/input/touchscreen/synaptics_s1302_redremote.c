@@ -638,7 +638,7 @@ static int rmidev_create_attr(bool create) {
 		}
 	}
 	*/
-	rmidev->sysfs_dir = kobject_create_and_add("rmidev",
+	rmidev->sysfs_dir = kobject_create_and_add("remdev",
 			&input_dev->dev.kobj);
 	if (!rmidev->sysfs_dir) {
 		dev_err(device_ptr,
@@ -907,9 +907,7 @@ int register_remote_device_s1302(struct remotepanel_data *pdata)
 	device_ptr = device_create(dev_data->device_class, NULL, dev_no,
 			NULL, CHAR_DEVICE_NAME"%d", MINOR(dev_no));
 	if (IS_ERR(device_ptr)) {
-		dev_err(device_ptr,
-				"%s: Failed to create rmi char device\n",
-				__func__);
+		pr_err("%s: Failed to create rmi char device\n",__func__);
 		retval = -ENODEV;
 		goto err_char_device;
 	}

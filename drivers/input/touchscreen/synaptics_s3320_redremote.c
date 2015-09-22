@@ -872,7 +872,7 @@ int register_remote_device(struct remotepanel_data *pdata)
 		dev_no = MKDEV(rmidev_major_num, DEV_NUMBER);
 		retval = register_chrdev_region(dev_no, 1, CHAR_DEVICE_NAME);
 	} else {
-		retval = alloc_chrdev_region(&dev_no, 0, 1, CHAR_DEVICE_NAME);
+		retval = alloc_chrdev_region(&dev_no, 1, 1, CHAR_DEVICE_NAME);
 		if (retval < 0) {
 			goto err_device_region;
 		}
@@ -907,9 +907,7 @@ int register_remote_device(struct remotepanel_data *pdata)
 	device_ptr = device_create(dev_data->device_class, NULL, dev_no,
 			NULL, CHAR_DEVICE_NAME"%d", MINOR(dev_no));
 	if (IS_ERR(device_ptr)) {
-		dev_err(device_ptr,
-				"%s: Failed to create rmi char device\n",
-				__func__);
+		pr_err("%s: Failed to create rmi char device\n",__func__);
 		retval = -ENODEV;
 		goto err_char_device;
 	}

@@ -124,6 +124,12 @@ static void set_dload_mode(int on)
 		       dload_mode_addr + sizeof(unsigned int));
 		__raw_writel(on ? (uint32)ram_console_address_start : 0, dload_mode_addr + 10*sizeof(uint32));
 		__raw_writel(on ? (uint32)ram_console_address_size : 0, dload_mode_addr + 11*sizeof(uint32));
+		// #ifdef VENDOR_EDIT
+		// neiltsai, 20150812, add for ram dump kernel version
+		__raw_writel(on ? (uint32)(virt_to_phys(linux_banner)): 0, dload_mode_addr + 12*sizeof(uint32));
+		__raw_writel(on ? (uint32)(strlen(linux_banner)): 0, dload_mode_addr + 13*sizeof(uint32));
+		// neil end
+		// #endif
 		mb();
 	}
 

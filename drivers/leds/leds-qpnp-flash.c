@@ -31,6 +31,11 @@
 #include <linux/proc_fs.h>
 struct qpnp_flash_led *proc_led =NULL ;
 #endif /*VENDOR_EDIT*/ 
+/*muyuezhong@camera,2015-07-23,add this for close backlight on the flash high*/
+#ifdef VENDOR_EDIT
+#include <linux/syscalls.h>
+#define FLASH_MAIN_CLOSE_BACKLIGHT
+#endif
 #define FLASH_LED_PERIPHERAL_SUBTYPE(base)			(base + 0x05)
 #define FLASH_SAFETY_TIMER(base)				(base + 0x40)
 #define FLASH_MAX_CURRENT(base)					(base + 0x41)
@@ -165,6 +170,14 @@ struct flash_node_data {
 	u8				trigger;
 	u8				enable;
 	bool				flash_on;
+/*muyuezhong@camera,2015-07-23,add this for close backlight on the flash high*/
+#ifdef VENDOR_EDIT
+#ifdef FLASH_MAIN_CLOSE_BACKLIGHT
+	bool                            backlight_flag;
+	char                            backlight_buf[10];
+	struct delayed_work             backlight_work;
+#endif
+#endif
 };
 
 /*
@@ -577,7 +590,63 @@ led_brightness qpnp_flash_led_brightness_get(struct led_classdev *led_cdev)
 {
 	return led_cdev->brightness;
 }
+/*muyuezhong@camera,2015-07-23,add this for close backlight on the flash high*/
+#ifdef VENDOR_EDIT
+#ifdef FLASH_MAIN_CLOSE_BACKLIGHT
+static int qpnp_flash_led_backlight_set(char *brightness_new)
+{
+    int fd  = -1;
+    int ret = -1;
+    mm_segment_t old_fs;
 
+    old_fs = get_fs();
+    set_fs(KERNEL_DS);
+    fd = sys_open("/sys/class/leds/lcd-backlight/brightness", O_RDWR, 0);
+    if(fd < 0){
+       pr_err("%s:failed to open the backlight node,fd = %d\n", __func__,fd);
+       set_fs(old_fs);
+       return -1;
+    }
+    ret = sys_write(fd, brightness_new, strlen(brightness_new));
+    if(ret < 0){
+       pr_err("%s:failed to set brightness,ret = %d\n",__func__,ret);
+       sys_close(fd);
+       set_fs(old_fs);
+       return -1;
+    }
+    pr_debug("%s:set the backlight brightness:%s\n", __func__,brightness_new);
+    sys_close(fd);
+    set_fs(old_fs);
+    return 0;
+}
+static int  qpnp_flash_led_backlight_get(char *brightness_old)
+{
+    int fd = -1;
+    int ret = -1;
+    mm_segment_t old_fs;
+
+    old_fs = get_fs();
+    set_fs(KERNEL_DS);
+    fd = sys_open("/sys/class/leds/lcd-backlight/brightness", O_RDWR, 0);
+    if(fd < 0){
+       pr_err("%s:failed to open the backlight node,fd = %d\n", __func__,fd);
+       set_fs(old_fs);
+       return -1;
+    }
+    ret = sys_read(fd, brightness_old, sizeof(brightness_old));
+    if(ret < 0){
+       pr_err("%s:failed to get brightness,ret = %d\n",__func__,ret);
+       sys_close(fd);
+       set_fs(old_fs);
+       return -1;
+    }
+    pr_debug("%s:get the backlight brightness:%s\n", __func__,brightness_old);
+    sys_close(fd);
+    set_fs(old_fs);
+    return 0;
+}
+#endif
+#endif
 static void qpnp_flash_led_work(struct work_struct *work)
 {
 	struct flash_node_data *flash_node = container_of(work,
@@ -588,6 +657,12 @@ static void qpnp_flash_led_work(struct work_struct *work)
 	int rc, brightness = flash_node->cdev.brightness;
 	int max_curr_avail_ma;
 	u8 val;
+/*muyuezhong@camera,2015-07-23,add this for close backlight on the flash high*/
+#ifdef VENDOR_EDIT
+#ifdef FLASH_MAIN_CLOSE_BACKLIGHT
+	char brightness_new[10]="0";
+#endif
+#endif
 
 	mutex_lock(&led->flash_led_lock);
 
@@ -735,7 +810,24 @@ static void qpnp_flash_led_work(struct work_struct *work)
 				"Max current reg write failed\n");
 			goto exit_flash_led_work;
 		}
-
+/*muyuezhong@camera,2015-07-23,add this for close backlight on the flash high*/
+#ifdef VENDOR_EDIT
+#ifdef FLASH_MAIN_CLOSE_BACKLIGHT
+		if(flash_node->prgm_current>LED_FULL&&!flash_node->backlight_flag&&!flash_node->id){
+			flash_node->backlight_flag = true;
+			rc = qpnp_flash_led_backlight_get(flash_node->backlight_buf);
+			if(rc < 0){
+				pr_err("Invalid get back light\n");
+				goto turn_off;
+			}
+			rc = qpnp_flash_led_backlight_set(brightness_new);
+			if(rc < 0){
+				pr_err("Invalid set back light\n");
+				goto turn_off;
+			}
+		}
+#endif
+#endif
 		val = (u8)(flash_node->prgm_current * FLASH_MAX_LEVEL
 				/ flash_node->max_current);
 		rc = qpnp_led_masked_write(led->spmi_dev,
@@ -746,7 +838,6 @@ static void qpnp_flash_led_work(struct work_struct *work)
 				"Current reg write failed\n");
 			goto exit_flash_led_work;
 		}
-
 		rc = qpnp_led_masked_write(led->spmi_dev,
 				FLASH_MODULE_ENABLE_CTRL(led->base),
 				FLASH_MODULE_ENABLE |
@@ -774,10 +865,10 @@ static void qpnp_flash_led_work(struct work_struct *work)
 
 	flash_node->flash_on = true;
 	mutex_unlock(&led->flash_led_lock);
-
 	return;
 
 turn_off:
+
 	rc = qpnp_led_masked_write(led->spmi_dev,
 			FLASH_LED_STROBE_CTRL(led->base),
 			flash_node->trigger, FLASH_LED_DISABLE);
@@ -802,12 +893,58 @@ error_regulator_enable:
 			regulator_set_voltage(flash_node->boost_regulator,
 				0, flash_node->boost_voltage_max);
 	}
-
+/*muyuezhong@camera,2015-07-23,add this for close backlight on the flash high*/
+#ifdef VENDOR_EDIT
+#ifdef FLASH_MAIN_CLOSE_BACKLIGHT
+	if(flash_node->backlight_flag&&LED_OFF == brightness&&!flash_node->id){
+		flash_node->backlight_flag = false;
+		if(flash_node->backlight_buf){
+			rc = qpnp_flash_led_backlight_set(flash_node->backlight_buf);
+			if(rc < 0){
+				pr_err("Invalid set back light\n");
+			}
+		}else{
+			pr_err("%s:backlight buf is NULL!\n",__func__);
+		}
+		cancel_delayed_work_sync(&flash_node->backlight_work);
+	}
+#endif
+#endif
 	flash_node->flash_on = false;
+
 	mutex_unlock(&led->flash_led_lock);
 
 	return;
 }
+/*muyuezhong@camera,2015-07-23,add this for close backlight on the flash high*/
+#ifdef VENDOR_EDIT
+#ifdef FLASH_MAIN_CLOSE_BACKLIGHT
+static void qpnp_flash_led_backlight_work(struct work_struct *work)
+{
+	struct flash_node_data *flash_node = container_of(work,
+					struct flash_node_data, backlight_work.work);
+	struct qpnp_flash_led *led =
+			dev_get_drvdata(&flash_node->spmi_dev->dev);
+	int rc;
+
+	mutex_lock(&led->flash_led_lock);
+	if(flash_node->backlight_flag){
+		flash_node->backlight_flag = false;
+		if(flash_node->backlight_buf){
+			rc = qpnp_flash_led_backlight_set(flash_node->backlight_buf);
+			if(rc < 0){
+				pr_err("Invalid set back light\n");
+			}
+		}else{
+			pr_err("%s:backlight buf is NULL!\n",__func__);
+		}
+	}
+
+	mutex_unlock(&led->flash_led_lock);
+	return;
+}
+#endif
+#endif
 
 static void qpnp_flash_led_brightness_set(struct led_classdev *led_cdev,
 						enum led_brightness value)
@@ -826,7 +963,15 @@ static void qpnp_flash_led_brightness_set(struct led_classdev *led_cdev,
 	flash_node->cdev.brightness = value;
 
 	schedule_work(&flash_node->work);
-
+/*muyuezhong@camera,2015-07-23,add this for close backlight on the flash high*/
+#ifdef VENDOR_EDIT
+#ifdef FLASH_MAIN_CLOSE_BACKLIGHT
+	if(value>LED_FULL&&!flash_node->id){
+			schedule_delayed_work(&flash_node->backlight_work,
+						msecs_to_jiffies(flash_node->duration+100));
+	}
+#endif
+#endif
 	return;
 }
 
@@ -1520,6 +1665,13 @@ static int qpnp_flash_led_probe(struct spmi_device *spmi)
 		led->flash_node[i].spmi_dev = spmi;
 
 		INIT_WORK(&led->flash_node[i].work, qpnp_flash_led_work);
+/*muyuezhong@camera,2015-07-23,add this for close backlight on the flash high*/
+#ifdef VENDOR_EDIT
+#ifdef FLASH_MAIN_CLOSE_BACKLIGHT
+		INIT_DELAYED_WORK(&led->flash_node[i].backlight_work, qpnp_flash_led_backlight_work);
+		led->flash_node[i].backlight_flag = false;
+#endif
+#endif
 		rc = of_property_read_string(temp, "qcom,led-name",
 						&led->flash_node[i].cdev.name);
 		if (rc < 0) {

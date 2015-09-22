@@ -256,7 +256,14 @@ static struct wcd9xxx_mbhc_config mbhc_cfg = {
 #else
 	.gpio_level_insert = 0,
 #endif
+
+#ifndef VENDOR_EDIT
+/* suzhiguang@oneplus.cn on 2015-8-21, this will causes speaker and handset silent in some case. */
     .detect_extn_cable = true,
+#else
+    .detect_extn_cable = false,
+#endif
+
     //qualcomm modify
 	.micbias_enable_flags = 1 << MBHC_MICBIAS_ENABLE_THRESHOLD_HEADSET | 1 << MBHC_MICBIAS_ENABLE_REGULAR_HEADSET,
 	.insert_detect = true,

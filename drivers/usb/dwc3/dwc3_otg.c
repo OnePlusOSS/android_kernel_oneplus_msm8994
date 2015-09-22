@@ -493,10 +493,6 @@ skip_psy_type:
 #endif
 	if (dotg->charger->chg_type == DWC3_CDP_CHARGER)
 		mA = DWC3_IDEV_CHG_MAX;
-#ifdef VENDOR_EDIT
-		if (dotg->charger->chg_type == DWC3_FLOATED_CHARGER)
-			mA = DWC3_IDEV_CHG_MAX;
-#endif
 
 	if (dotg->charger->max_power == mA)
 		return 0;
@@ -679,9 +675,13 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 					 */
 					if (dotg->charger_retry_count ==
 						max_chgr_retry_count) {
+					#ifdef VENDOR_EDIT	//yangfb add to set charge current to  FLOATED_CHARGER ,20150805
+						dwc3_otg_set_power(phy, DWC3_IDEV_CHG_MAX);
+					#else
 						dwc3_otg_set_power(phy, 0);
+					#endif
 						dbg_event(0xFF, "FLCHG put", 0);
-						pm_runtime_put_sync(phy->dev);
+						//pm_runtime_put_sync(phy->dev); ////do nothing ,do not  need to let system suspend
 						break;
 					}
 					charger->start_detection(dotg->charger,

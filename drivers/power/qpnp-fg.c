@@ -196,10 +196,10 @@ static struct fg_mem_setting settings[FG_MEM_SETTING_MAX] = {
 #ifdef VENDOR_EDIT
 /* yangfangbiao@oneplus.cn, 2015/03/11  Modify for PMI8994 charge*/
 
-	SETTING(SOFT_COLD,       0x454,   0,      -100),
+	SETTING(SOFT_COLD,       0x454,   0,      -30),
 	SETTING(SOFT_HOT,        0x454,   1,      550),
-	SETTING(HARD_COLD,       0x454,   2,      -150),
-	SETTING(HARD_HOT,        0x454,   3,      600),
+	SETTING(HARD_COLD,       0x454,   2,      -40),
+	SETTING(HARD_HOT,        0x454,   3,      560),
 #else
 	SETTING(SOFT_COLD,       0x454,   0,      100),
 	SETTING(SOFT_HOT,        0x454,   1,      400),
@@ -409,6 +409,8 @@ struct fg_chip {
 	int saltate_counter;
 	int soc_pre;
 	int  batt_vol_pre;
+	bool  allow_get_real_fg_soc;
+	unsigned long		enter_suspend_time;
 	unsigned long		soc_continue_time;
 	#endif
 };
@@ -1421,7 +1423,10 @@ static int get_prop_capacity(struct fg_chip *chip)
 				capacity, cap[0]);
 	#ifdef VENDOR_EDIT
 	OEM_SOC_CALIBRATE:
+	if(chip->allow_get_real_fg_soc == false)
+	{
 	capacity =fg_soc_calibrate(chip, capacity);
+	}
 	#endif
 	return capacity;
 }
@@ -2670,6 +2675,7 @@ static int fg_power_set_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_UPDATE_NOW:
 		if (val->intval)
 			update_sram_data(chip, &unused);
+		pr_err("update_sram_data by set property\n");
 		break;
 	case POWER_SUPPLY_PROP_STATUS:
 		chip->status = val->intval;
@@ -4542,9 +4548,12 @@ static void delayed_init_work(struct work_struct *work)
 	schedule_delayed_work(
 		&chip->update_jeita_setting,
 		msecs_to_jiffies(INIT_JEITA_DELAY_MS));
-
-	if (chip->last_sram_update_time == 0)
-		update_sram_data_work(&chip->update_sram_data.work);
+#ifdef VENDOR_EDIT //yangfangbiao@oneplus.cn modified to save bug:SND-9288,SND-8082
+	//do nothing ,sometimes ,charger will update sram data before schedule_delayed_work ,that cause update_sram_data_work does not work noraml
+#else
+if (chip->last_sram_update_time == 0)
+#endif
+	update_sram_data_work(&chip->update_sram_data.work);
 
 	if (chip->last_temp_update_time == 0)
 		update_temp_data(&chip->update_temp_work.work);
@@ -4734,7 +4743,7 @@ static int fg_probe(struct spmi_device *spmi)
 #endif/* VENDOR_EDIT */
 
 	schedule_work(&chip->init_work);
-
+	chip->allow_get_real_fg_soc =false;
 	pr_info("probe success\n");
 	return rc;
 
@@ -4800,6 +4809,7 @@ static int fg_suspend(struct device *dev)
 {
 	struct fg_chip *chip = dev_get_drvdata(dev);
 
+	get_current_time(&chip->enter_suspend_time);
 	if (!chip->sw_rbias_ctrl)
 		return 0;
 
@@ -4808,10 +4818,27 @@ static int fg_suspend(struct device *dev)
 
 	return 0;
 }
-
+#define ONE_MIN 60 //1min
 static int fg_resume(struct device *dev)
 {
+	unsigned long		reusme_time;
+	unsigned long		suspend_last_time;
+	int					soc;
 	struct fg_chip *chip = dev_get_drvdata(dev);
+#ifdef VENDOR_EDIT //add for sleep long time ,soc not jump
+	chip->allow_get_real_fg_soc =true;//do not calibrate soc
+	soc = get_prop_capacity(chip);
+	chip->allow_get_real_fg_soc =false;
+	if(soc >= 90)
+	soc += 2;
+	get_current_time(&reusme_time);
+	suspend_last_time=reusme_time - chip->enter_suspend_time;
+	if((suspend_last_time >= ONE_MIN) && (chip->soc_pre - soc) >= 1) //sleep time > 1min,calibrate soc set to fg real soc
+		{
+		pr_err("chip->soc_pre=%d,soc=%d,suspend_last_time=%ld\n",chip->soc_pre,soc,suspend_last_time);
+	     chip->soc_pre = soc;
+		}
+#endif
 
 	if (!chip->sw_rbias_ctrl)
 		return 0;

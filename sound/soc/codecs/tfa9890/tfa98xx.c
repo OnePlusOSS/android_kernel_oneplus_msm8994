@@ -256,6 +256,9 @@ int tfa98xx_bulk_write_raw(struct snd_soc_codec *codec, const u8 *data, u8 count
 	}
 }
 
+
+#ifndef VENDOR_EDIT
+/*suzhiguang@MultiMedia.AudioDrv, 2015-08-24,remove monitor,it will cause system crash because of mutex lock*/
 static void tfa98xx_monitor(struct work_struct *work)
 {
 	
@@ -315,7 +318,7 @@ static void tfa98xx_monitor(struct work_struct *work)
 	mutex_unlock(&tfa98xx->dsp_init_lock);
 
 }
-
+#endif
 
 static void tfa98xx_dsp_init(struct work_struct *work)
 {
@@ -416,7 +419,11 @@ static int tfa98xx_digital_mute(struct snd_soc_dai *dai, int mute)
 	mutex_lock(&tfa98xx->dsp_init_lock);
 
 	if (mute) {
+#ifndef VENDOR_EDIT
+/*suzhiguang@MultiMedia.AudioDrv, 2015-08-24,remove monitor,it will cause system crash because of mutex lock*/
 		cancel_delayed_work_sync(&tfa98xx->delay_work);
+#endif
+
 		/*
 		 * need to wait for amp to stop switching, to minimize
 		 * pop, else I2S clk is going away too soon interrupting
@@ -434,7 +441,10 @@ static int tfa98xx_digital_mute(struct snd_soc_dai *dai, int mute)
 		 */
 		tfa98xx_dsp_quickstart(tfa98xx, tfa98xx->profile, tfa98xx->vstep);		
 		test = 1;
+#ifndef VENDOR_EDIT
+/*suzhiguang@MultiMedia.AudioDrv, 2015-08-24,remove monitor,it will cause system crash because of mutex lock*/
 		queue_delayed_work(tfa98xx->tfa98xx_wq, &tfa98xx->delay_work, 5*HZ);
+#endif
 	}
 
 	mutex_unlock(&tfa98xx->dsp_init_lock);
@@ -670,7 +680,11 @@ int tfa98xx_set_stop_ctl(struct snd_kcontrol *kcontrol,
 	struct tfa98xx *tfa98xx = snd_soc_codec_get_drvdata(codec);
 
 	if ((ucontrol->value.integer.value[0] != 0) && !tfa98xx_is_pwdn(tfa98xx)) {
+#ifndef VENDOR_EDIT
+/*suzhiguang@MultiMedia.AudioDrv, 2015-08-24,remove monitor,it will cause system crash because of mutex lock*/
 		cancel_delayed_work_sync(&tfa98xx->delay_work);
+#endif
+
 		tfa98xx_dsp_stop(tfa98xx);
 	}
 
@@ -882,7 +896,11 @@ static int tfa98xx_i2c_probe(struct i2c_client *i2c,
 #endif
 
 	INIT_WORK(&tfa98xx->init_work, tfa98xx_dsp_init);
+
+#ifndef VENDOR_EDIT
+/*suzhiguang@MultiMedia.AudioDrv, 2015-08-24,remove monitor,it will cause system crash because of mutex lock*/
 	INIT_DELAYED_WORK(&tfa98xx->delay_work, tfa98xx_monitor);
+#endif
 
 	/* register codec */
 	ret = snd_soc_register_codec(&i2c->dev, &tfa98xx_soc_codec,

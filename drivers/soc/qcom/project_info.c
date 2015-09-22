@@ -296,10 +296,12 @@ void get_ddr_manufacture_name(void){
 
 static char mainboard_version[4] = {0};
 static char mainboard_manufacture[8] = {'O', 'N', 'E', 'P', 'L', 'U', 'S','\0'};
+//extern unsigned long totalram_pages __read_mostly;
 
 int __init init_project_info(void)
 {
 	static bool project_info_init_done;
+	int ddr_size;
 
 	if (project_info_init_done)
 		return 0;
@@ -321,7 +323,14 @@ int __init init_project_info(void)
 
 	//add ddr row, column information and manufacture name information
 	get_ddr_manufacture_name();
-	snprintf(ddr_version, sizeof(ddr_version), "row:%d, column:%d",project_info_desc->ddr_raw,project_info_desc->ddr_column);
+	if(totalram_pages > 3*(1<<18)){
+		ddr_size = 4;
+	}else if(totalram_pages > 2*(1<<18)){
+		ddr_size = 3;
+	}else if(totalram_pages > 1*(1<<18)){
+		ddr_size = 2;
+	}
+	snprintf(ddr_version, sizeof(ddr_version), "size_%dG_r_%d_c_%d", ddr_size, project_info_desc->ddr_raw,project_info_desc->ddr_column);
 	push_component_info(DDR,ddr_version, ddr_manufacture);
 
 	project_info_init_done = true;

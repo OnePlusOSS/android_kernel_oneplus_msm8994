@@ -529,6 +529,7 @@ int /*__devinit*/ fpc1020_input_init(fpc1020_data_t *fpc1020)
 			&& (fpc1020->chip.type != FPC1020_CHIP_1021A)
 			&& (fpc1020->chip.type != FPC1020_CHIP_1021B)
 			&& (fpc1020->chip.type != FPC1020_CHIP_1150B)
+			&& (fpc1020->chip.type != FPC1020_CHIP_1150F)
 			&& (fpc1020->chip.type != FPC1020_CHIP_1150A)){
 		dev_err(&fpc1020->spi->dev, "%s, chip not supported (%s)\n",
 			__func__,

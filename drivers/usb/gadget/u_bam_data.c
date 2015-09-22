@@ -112,12 +112,22 @@ struct bam_data_ch_info {
 	unsigned int		rx_flow_control_enable;
 	unsigned int		rx_flow_control_triggered;
 	/* used for RNDIS/ECM network inteface based design */
+//add by jiachenghui for usb fail after rndis click some times, 2015-7-8
+#ifndef VENDOR_EDIT
 	atomic_t		is_net_interface_up;
+#else
+    atomic_t		pipe_connect_notified;
+#endif
+//end add by jiachenghui for usb fail after rndis click some times, 2015-7-8
 	bool			tx_req_dequeued;
 };
 
 static struct work_struct *rndis_conn_w;
+//add by jiachenghui for usb fail after rndis click some times, 2015-7-8
+#ifndef VENDOR_EDIT
 static bool is_ipa_rndis_net_on;
+#endif
+//end add by jiachenghui for usb fail after rndis click some times, 2015-7-8
 
 enum u_bam_data_event_type {
 	U_BAM_DATA_DISCONNECT_E = 0,
@@ -752,13 +762,26 @@ static void bam2bam_free_rx_skb_idle_list(struct bam_data_port *port)
  */
 static void bam_data_ipa_disconnect(struct bam_data_ch_info *d)
 {
+//add by jiachenghui for usb fail after rndis click some times, 2015-7-8
+#ifndef VENDOR_EDIT
 	pr_debug("%s(): is_net_interface_up:%d\n",
 		__func__, atomic_read(&d->is_net_interface_up));
+#else
+	pr_debug("%s(): pipe_connect_notified:%d\n",
+		__func__, atomic_read(&d->pipe_connect_notified));
+#endif
+//end add by jiachenghui for usb fail after rndis click some times, 2015-7-8
 	/*
 	 * Check if is_net_interface_up is set to 1, then perform disconnect
 	 * part and set is_net_interface_up to zero.
 	 */
+//add by jiachenghui for usb fail after rndis click some times, 2015-7-8
+#ifndef VENDOR_EDIT
 	if (atomic_xchg(&d->is_net_interface_up, 0) == 1) {
+	#else
+	if (atomic_xchg(&d->pipe_connect_notified, 0) == 1) {
+#endif
+//end add by jiachenghui for usb fail after rndis click some times, 2015-7-8
 		void *priv;
 		if (d->func_type == USB_FUNC_ECM) {
 			priv = ecm_qc_get_ipa_priv();
@@ -766,7 +789,11 @@ static void bam_data_ipa_disconnect(struct bam_data_ch_info *d)
 		} else if (d->func_type == USB_FUNC_RNDIS) {
 			priv = rndis_qc_get_ipa_priv();
 			rndis_ipa_pipe_disconnect_notify(priv);
+//add by jiachenghui for usb fail after rndis click some times, 2015-7-8
+#ifndef VENDOR_EDIT
 			is_ipa_rndis_net_on = false;
+#endif
+//end add by jiachenghui for usb fail after rndis click some times, 2015-7-8
 		}
 		pr_debug("%s(): net interface is disconnected.\n", __func__);
 	}
@@ -1136,8 +1163,17 @@ static void bam2bam_data_connect_work(struct work_struct *w)
 					__func__, ret);
 				return;
 			}
+//add by jiachenghui for usb fail after rndis click some times, 2015-7-8
+#ifndef VENDOR_EDIT
 			is_ipa_rndis_net_on = true;
+#endif
+//end add by jiachenghui for usb fail after rndis click some times, 2015-7-8
 		}
+//add by jiachenghui for usb fail after rndis click some times, 2015-7-8
+#ifdef VENDOR_EDIT
+        atomic_set(&d->pipe_connect_notified, 1);
+#endif
+//end add by jiachenghui for usb fail after rndis click some times, 2015-7-8
 	} else { /* transport type is USB_GADGET_XPORT_BAM2BAM */
 		/* Upadate BAM specific attributes in usb_request */
 		usb_bam_reset_complete();
@@ -1224,7 +1260,12 @@ void bam_data_start_rx_tx(u8 port_num)
 	 * cable disconnect i.e. bam_data_disconnect() API even not as part
 	 * of any error happen in this API further.
 	 */
+//add by jiachenghui for usb fail after rndis click some times, 2015-7-8
+#ifndef VENDOR_EDIT
 	atomic_set(&d->is_net_interface_up, 1);
+#endif
+//add by jiachenghui for usb fail after rndis click some times, 2015-7-8
+
 	if (!port->port_usb || !port->port_usb->in->driver_data
 		|| !port->port_usb->out->driver_data) {
 		pr_err("%s: Can't start tx, rx, ep not enabled", __func__);
@@ -1297,18 +1338,50 @@ static int bam2bam_data_port_alloc(int portno)
 
 void u_bam_data_start_rndis_ipa(void)
 {
+//add by jiachenghui for usb fail after rndis click some times, 2015-7-8
+#ifdef VENDOR_EDIT
+	int port_num;
+	struct bam_data_port *port;
+	struct bam_data_ch_info *d;
+#endif
+//end add by jiachenghui for usb fail after rndis click some times, 2015-7-8
 	pr_debug("%s\n", __func__);
+//add by jiachenghui for usb fail after rndis click some times, 2015-7-8
+#ifdef VENDOR_EDIT
+	port_num = u_bam_data_func_to_port(USB_FUNC_RNDIS,
+					RNDIS_QC_ACTIVE_PORT);
+	port = bam2bam_data_ports[port_num];
+	if (!port) {
+		pr_err("%s: port is NULL", __func__);
+		return;
+	}
 
+	d = &port->data_ch;
+	if (!atomic_read(&d->pipe_connect_notified)) {
+	     //usb_gadget_autopm_get_noresume(port->gadget);
+		 queue_work(bam_data_wq, &port->connect_w);
+	}
+#else
+//end add by jiachenghui for usb fail after rndis click some times, 2015-7-8
 	if (!is_ipa_rndis_net_on)
 		queue_work(bam_data_wq, rndis_conn_w);
+#endif//add by jiachenghui for usb fail after rndis click some times, 2015-7-8
 	else
 		pr_debug("%s: Transfers already started?\n", __func__);
 }
 
 void u_bam_data_stop_rndis_ipa(void)
 {
+//add by jiachenghui for usb fail after rndis click some times, 2015-7-8
+#ifdef VENDOR_EDIT
+	int port_num;
+	struct bam_data_port *port;
+	struct bam_data_ch_info *d;
+#endif
+//end add by jiachenghui for usb fail after rndis click some times, 2015-7-8
 	pr_debug("%s\n", __func__);
 
+#ifndef VENDOR_EDIT//add by jiachenghui for usb fail after rndis click some times, 2015-7-8
 	if (is_ipa_rndis_net_on) {
 		int port_num = u_bam_data_func_to_port(USB_FUNC_RNDIS,
 							RNDIS_QC_ACTIVE_PORT);
@@ -1317,6 +1390,23 @@ void u_bam_data_stop_rndis_ipa(void)
 		rndis_ipa_reset_trigger();
 		bam_data_stop_endless_tx(port);
 		if (port->is_ipa_connected)
+#else//add by jiachenghui for usb fail after rndis click some times, 2015-7-8
+	port_num = u_bam_data_func_to_port(USB_FUNC_RNDIS,
+					RNDIS_QC_ACTIVE_PORT);
+	port = bam2bam_data_ports[port_num];
+	if (!port) {
+		pr_err("%s: port is NULL", __func__);
+		return;
+	}
+
+	d = &port->data_ch;
+
+	if (atomic_read(&d->pipe_connect_notified)) {
+		rndis_ipa_reset_trigger();
+		bam_data_stop_endless_tx(port);
+		bam_data_stop_endless_rx(port);
+#endif
+//end add by jiachenghui for usb fail after rndis click some times, 2015-7-8
 			queue_work(bam_data_wq, &port->disconnect_w);
 	}
 }
@@ -1450,7 +1540,7 @@ void bam_data_disconnect(struct data_port *gr, enum function_type func,
 
 	if (d->trans == USB_GADGET_XPORT_BAM2BAM_IPA) {
 //add by jiachenghui for usb fail after rndis click some times, 2015-7-8
-#ifdef VENDOR_EDIT
+#ifndef VENDOR_EDIT
 	       void *priv;
 		if (d->func_type == USB_FUNC_ECM) {
 			priv = ecm_qc_get_ipa_priv();

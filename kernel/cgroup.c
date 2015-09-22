@@ -2153,6 +2153,10 @@ retry_find_task:
 		 */
 		tcred = __task_cred(tsk);
 		if (!uid_eq(cred->euid, GLOBAL_ROOT_UID) &&
+#ifdef VENDOR_EDIT
+//huruihuan add for cgroup control
+			!uid_eq(cred->euid, GLOBAL_SYSTEM_UID) &&
+#endif
 		    !uid_eq(cred->euid, tcred->uid) &&
 		    !uid_eq(cred->euid, tcred->suid)) {
 			/*

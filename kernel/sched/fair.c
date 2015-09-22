@@ -79,6 +79,24 @@ static unsigned int sched_nr_latency = 8;
  */
 unsigned int sysctl_sched_child_runs_first __read_mostly;
 
+#ifdef VENDOR_EDIT
+enum thermal_aware_scheduling {
+	SCHED_TA_DISABLE,
+	SCHED_TA_THERMAL_ONLY,
+	SCHED_TA_ALWAYS_ON,
+};
+/*
+ * Thermal-aware scheduling, prefer running on small cluster
+ * when task loading on big cluster is below certain threshold
+ *
+ * Options:
+ * SCHED_TA_DISABLE - Disable TA scheduling
+ * SCHED_TA_THERMAL_ONLY - Only enable when under thermal constraint
+ * SCHED_TA_ALWAYS_ON - Always enable TA scheduling
+ */
+unsigned int __read_mostly sysctl_thermal_aware_scheduling = SCHED_TA_THERMAL_ONLY;
+#endif
+
 /*
  * Controls whether, when SD_SHARE_PKG_RESOURCES is on, if all
  * tasks go to idle CPUs when woken. If this is off, note that the
@@ -1684,6 +1702,18 @@ done:
 	return ret;
 }
 
+static inline int is_cpu_throttling_imminent(int cpu);
+#ifdef VENDOR_EDIT
+void down_migrate_task(struct task_struct *p)
+{
+	if (p->ravg.mitigated)
+		return;
+
+	if (sysctl_thermal_aware_scheduling)
+		p->ravg.mitigated = 1;
+}
+#endif
+
 /*
  * Task will fit on a cpu if it's bandwidth consumption on that cpu
  * will be less than sched_upmigrate. A big task that was previously
@@ -1700,10 +1730,18 @@ static int task_will_fit(struct task_struct *p, int cpu)
 	struct rq *rq = cpu_rq(cpu);
 	int upmigrate = sched_upmigrate;
 	int nice = TASK_NICE(p);
+#ifdef VENDOR_EDIT
+	int thermal_mitigation = 0;
+	int prev_cpu_throttled = 0, cpu_throttled = 0, ta_enabled = 0;
+#endif
 
 	if (rq->capacity == max_capacity)
 		return 1;
 
+#ifdef VENDOR_EDIT
+	if (p->ravg.mitigated)
+		return 1;
+#endif
 	if (sched_boost()) {
 		if (rq->capacity > prev_rq->capacity)
 			return 1;
@@ -1711,13 +1749,37 @@ static int task_will_fit(struct task_struct *p, int cpu)
 		if (nice > sched_upmigrate_min_nice || upmigrate_discouraged(p))
 			return 1;
 
-		load = scale_load_to_cpu(task_load(p), cpu);
+#ifdef VENDOR_EDIT
+		if (sysctl_thermal_aware_scheduling == SCHED_TA_THERMAL_ONLY) {
+			prev_cpu_throttled = is_cpu_throttling_imminent(prev_cpu);
+			cpu_throttled = is_cpu_throttling_imminent(cpu);
+			if (prev_cpu_throttled || cpu_throttled)
+				ta_enabled = 1;
+		} else if (sysctl_thermal_aware_scheduling == SCHED_TA_ALWAYS_ON)
+			ta_enabled = 1;
 
+		if (ta_enabled && cpu != prev_cpu
+		&& prev_rq->max_possible_capacity > rq->max_possible_capacity) {
+			thermal_mitigation = 1;
+			load = scale_load_to_cpu(task_load(p), prev_cpu);
+		} else
+#endif
+			load = scale_load_to_cpu(task_load(p), cpu);
+
+#ifdef VENDOR_EDIT
+		if (prev_rq->capacity > rq->capacity || thermal_mitigation)
+#else
 		if (prev_rq->capacity > rq->capacity)
+#endif
 			upmigrate = sched_downmigrate;
 
-		if (load < upmigrate)
+		if (load < upmigrate) {
+#ifdef VENDOR_EDIT
+			if (thermal_mitigation)
+				down_migrate_task(p);
+#endif
 			return 1;
+		}
 	}
 
 	return 0;
@@ -1730,8 +1792,15 @@ static int eligible_cpu(struct task_struct *p, int cpu, int sync)
 	if (mostly_idle_cpu_sync(cpu, sync))
 		return 1;
 
-	if (rq->capacity != max_capacity)
+	if (rq->capacity != max_capacity) {
+#ifdef VENDOR_EDIT
+		/* Current demand is still high, bail all small cpus out.
+		 * select_best_cpu() will choose proper cpu to run */
+		if (p->ravg.mitigated)
+			return 1;
+#endif
 		return !spill_threshold_crossed(p, rq, cpu, sync);
+	}
 
 	return 0;
 }
@@ -1933,7 +2002,12 @@ static int skip_cpu(struct task_struct *p, int cpu, int reason)
 		break;
 
 	case EA_MIGRATION:
-		skip = rq->capacity < task_rq->capacity  ||
+#ifdef VENDOR_EDIT
+		if (sysctl_thermal_aware_scheduling)
+		    skip = power_cost(p, cpu) >  power_cost(p,  task_cpu(p));
+		else
+#endif
+		    skip = rq->capacity < task_rq->capacity  ||
 			power_cost(p, cpu) >  power_cost(p,  task_cpu(p));
 		break;
 
@@ -2682,7 +2756,6 @@ static int lower_power_cpu_available(struct task_struct *p, int cpu)
 	return (lowest_power_cpu != task_cpu(p));
 }
 
-static inline int is_cpu_throttling_imminent(int cpu);
 static inline int is_task_migration_throttled(struct task_struct *p);
 
 /*

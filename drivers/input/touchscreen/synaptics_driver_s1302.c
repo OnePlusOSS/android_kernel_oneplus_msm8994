@@ -661,6 +661,7 @@ static int synaptics_rmi4_i2c_write_word(struct i2c_client* client,
 	return retval;
 }
 */
+static char log_count = 0;
 #define REP_KEY_MENU (key_reverse?(KEY_BACK):(KEY_MENU))
 #define REP_KEY_BACK (key_reverse?(KEY_MENU):(KEY_BACK))
 static void int_key(struct synaptics_ts_data *ts )
@@ -677,7 +678,8 @@ static void int_key(struct synaptics_ts_data *ts )
     }
 
     button_key = synaptics_rmi4_i2c_read_byte(ts->client,0x00);
-    printk("%s	button_key:%d   pre_btn_state:%d\n",__func__,button_key,ts->pre_btn_state);
+    if (6 == (++log_count % 12))
+        printk("%s	button_key:%d   pre_btn_state:%d\n",__func__,button_key,ts->pre_btn_state);
     if((button_key & 0x01) && !(ts->pre_btn_state & 0x01))//back
     {
         input_report_key(ts->input_dev, REP_KEY_BACK, 1);

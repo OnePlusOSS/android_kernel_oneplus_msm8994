@@ -552,7 +552,9 @@ void msm_isp_check_for_output_error(struct vfe_device *vfe_dev,
 		for (i = 0; i < MAX_NUM_STREAM; i++) {
 			stream_info = &axi_data->stream_info[i];
 			if (stream_info->state != ACTIVE ||
-				!stream_info->controllable_output)
+				!stream_info->controllable_output ||
+				(SRC_TO_INTF(stream_info->stream_src) !=
+				VFE_PIX_0))
 				continue;
 
 			if (stream_info->undelivered_request_cnt) {
@@ -588,15 +590,17 @@ void msm_isp_notify(struct vfe_device *vfe_dev, uint32_t event_type,
 
 	switch (event_type) {
 	case ISP_EVENT_SOF:
-		msm_isp_check_for_output_error(vfe_dev, ts,
-			&event_data.u.output_info);
+		if (frame_src == VFE_PIX_0){
 
-		if (frame_src == VFE_PIX_0)
+			msm_isp_check_for_output_error(vfe_dev, ts,
+				&event_data.u.output_info);
+
 			vfe_dev->axi_data.src_info[frame_src].frame_id +=
 				vfe_dev->axi_data.src_info[frame_src].
 				sof_counter_step;
-		else
+		}else{
 			vfe_dev->axi_data.src_info[frame_src].frame_id++;
+		}
 
 		if (vfe_dev->axi_data.src_info[frame_src].frame_id == 0)
 			vfe_dev->axi_data.src_info[frame_src].frame_id = 1;
@@ -776,6 +780,8 @@ int msm_isp_request_axi_stream(struct vfe_device *vfe_dev, void *arg)
 
 	stream_info->memory_input = stream_cfg_cmd->memory_input;
 
+	vfe_dev->reg_update_requested &=
+		~(BIT(stream_info->stream_src));
 
 	msm_isp_axi_reserve_wm(&vfe_dev->axi_data, stream_info);
 
@@ -1382,6 +1388,13 @@ int msm_isp_drop_frame(struct vfe_device *vfe_dev,
 	struct msm_isp_bufq *bufq = NULL;
 	int rc = -1;
 
+	if (!vfe_dev || !stream_info || !ts || !output_info) {
+		pr_err("%s %d  vfe_dev %p stream_info %p ts %p op_info %p\n",
+			__func__, __LINE__, vfe_dev, stream_info, ts,
+			output_info);
+		return -EINVAL;
+	}
+
 	pingpong_status =
 		~vfe_dev->hw_info->vfe_ops.axi_ops.get_pingpong_status(vfe_dev);
 
@@ -1404,17 +1417,17 @@ int msm_isp_drop_frame(struct vfe_device *vfe_dev,
 		vfe_dev->buf_mgr->ops->buf_done(vfe_dev->buf_mgr,
 			done_buf->bufq_handle, done_buf->buf_idx, &ts->buf_time,
 			frame_id, stream_info->runtime_output_format);
-	}
 
-	bufq = vfe_dev->buf_mgr->ops->get_bufq(vfe_dev->buf_mgr,
-		done_buf->bufq_handle);
-	if (!bufq) {
-		pr_err("%s: Invalid bufq buf_handle %x\n",
-			__func__, done_buf->bufq_handle);
-		return rc;
+		bufq = vfe_dev->buf_mgr->ops->get_bufq(vfe_dev->buf_mgr,
+			done_buf->bufq_handle);
+		if (!bufq) {
+			pr_err("%s: Invalid bufq buf_handle %x\n",
+				__func__, done_buf->bufq_handle);
+			return rc;
+		}
+		output_info->output_err_mask |=
+			1 << bufq->stream_id;
 	}
-	output_info->output_err_mask |=
-		1 << bufq->stream_id;
 	return 0;
 }
 
@@ -2001,6 +2014,8 @@ static int msm_isp_stop_axi_stream(struct vfe_device *vfe_dev,
 		stream_info = &axi_data->stream_info[
 			HANDLE_TO_IDX(stream_cfg_cmd->stream_handle[i])];
 		msm_isp_deinit_stream_ping_pong_reg(vfe_dev, stream_info);
+		vfe_dev->reg_update_requested &=
+			~(BIT(stream_info->stream_src));
 	}
 
 	return rc;
@@ -2033,7 +2048,7 @@ int msm_isp_cfg_axi_stream(struct vfe_device *vfe_dev, void *arg)
 		   vfe_dev, stream_cfg_cmd, camif_update);
 	} else {
 		rc = msm_isp_stop_axi_stream(
-		   vfe_dev, stream_cfg_cmd, camif_update);
+		   vfe_dev, stream_cfg_cmd, /*camif_update*/DISABLE_CAMIF_IMMEDIATELY); //0825 Wesley add for axi wait
 
 		msm_isp_axi_update_cgc_override(vfe_dev, stream_cfg_cmd, 0);
 	}
@@ -2117,8 +2132,8 @@ static int msm_isp_request_frame(struct vfe_device *vfe_dev,
 	}
 
 	frame_src = SRC_TO_INTF(stream_info->stream_src);
-	if ((frame_id <=
-		vfe_dev->axi_data.src_info[frame_src].camif_sof_frame_id) ||
+	if (((frame_src == VFE_PIX_0) && (frame_id <=
+		vfe_dev->axi_data.src_info[frame_src].camif_sof_frame_id)) ||
 		stream_info->undelivered_request_cnt >= 2) {
 		pr_err("%s:%d invalid request_frame %d cur frame_id %d\n",
 			__func__, __LINE__, frame_id,
@@ -2131,11 +2146,13 @@ static int msm_isp_request_frame(struct vfe_device *vfe_dev,
 				__func__, __LINE__, frame_src);
 		return 0;
 	}
-	if (!stream_info->undelivered_request_cnt &&
+	if ((frame_src == VFE_PIX_0) && !stream_info->undelivered_request_cnt &&
 		stream_info->prev_framedrop_pattern) {
-		pr_err("%s:%d frame_id %d prev_pattern is valid %d\n",
-			__func__, __LINE__, frame_id,
-			stream_info->prev_framedrop_pattern);
+		pr_err("%s:%d vfe %d frame_id %d prev_pattern %x stream_id %x\n",
+			__func__, __LINE__, vfe_dev->pdev->id, frame_id,
+			stream_info->prev_framedrop_pattern,
+			stream_info->stream_id);
+
 		rc = msm_isp_return_empty_buffer(vfe_dev, stream_info,
 			user_stream_id, frame_id, frame_src);
 		if (rc < 0)

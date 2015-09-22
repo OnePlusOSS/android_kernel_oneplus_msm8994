@@ -45,7 +45,7 @@
 //#define VL6180_DEBUG
 #undef CDBG
 #ifdef VL6180_DEBUG
-#define CDBG(fmt, ...) pr_err("%s:%d " fmt , __func__, __LINE__, ##__VA_ARGS__)
+#define CDBG(fmt, args...) pr_err(fmt, ##args)
 
 #else
 #define CDBG(fmt, args...) do{}while(0)
@@ -311,17 +311,17 @@ static int stmvl6180_ps_read_result(struct i2c_client *client)
 
 	status = VL6180x_RdBuffer(vl6180x_dev, RESULT_RANGE_STATUS , vl6180_data->ResultBuffer,RESULT_REG_COUNT);
         if (status) {
-            VL6180x_ErrLog("RESULT_RANGE_STATUS rd fail");
+            VL6180x_ErrLog("RESULT_RANGE_STATUS rd fail status is:%d\n",status);
             return status;
         }	
 	status = VL6180x_RdByte(vl6180x_dev, SYSRANGE_PART_TO_PART_RANGE_OFFSET, &(vl6180_data->rangeData.m_rangeOffset));
         if (status) {
-            VL6180x_ErrLog("SYSRANGE_PART_TO_PART_RANGE_OFFSET rd fail");
+            VL6180x_ErrLog("SYSRANGE_PART_TO_PART_RANGE_OFFSET rd failstatus is:%d\n",status);
             return status;
         }
         status = VL6180x_RdWord(vl6180x_dev, SYSRANGE_CROSSTALK_COMPENSATION_RATE, &(vl6180_data->rangeData.m_crossTalk));
         if (status) {
-            VL6180x_ErrLog("SYSRANGE_CROSSTALK_COMPENSATION_RATE rd fail");
+            VL6180x_ErrLog("SYSRANGE_CROSSTALK_COMPENSATION_RATE rd failstatus is:%d\n",status);
 	   return status;
         }
 	
@@ -553,6 +553,7 @@ static ssize_t stmvl6180_store_enable_ps_sensor(struct device *dev,
 		}
 	} 
 	else {
+		if (vl6180_data->enable_ps_sensor==1) { //#tt999
 		//turn off p sensor 
 //	 	mutex_lock(&vl6180_data->work_mutex);
 		vl6180_data->enable_ps_sensor = 0;
@@ -576,7 +577,7 @@ static ssize_t stmvl6180_store_enable_ps_sensor(struct device *dev,
 			pr_err("failed rc %d\n", rc);
 //			return rc;
 		}		
-
+		}
 	}
 	mutex_unlock(&vl6180_data->work_mutex);
 
@@ -943,7 +944,6 @@ static long stmvl6180_ioctl(struct file *file,
 	mutex_lock(&vl6180_mutex);
 	ret = stmvl6180_ioctl_handler(file, cmd, arg, (void __user *)arg);
 	mutex_unlock(&vl6180_mutex);
-
 	return ret;
 }
 
@@ -986,7 +986,59 @@ static struct msm_camera_i2c_fn_t msm_sensor_cci_func_tbl = {
 	.i2c_util = msm_sensor_cci_i2c_util,
 	.i2c_poll =  msm_camera_cci_i2c_poll,
 };
+#ifdef VENDOR_EDIT
+static long msm_stmvl6180_subdev_ioctl(struct v4l2_subdev *sd,
+			unsigned int cmd, void *arg)
+{
+	unsigned long flags;
+	struct i2c_client *client;
+	struct stmvl6180_data *vl6180_data = vl6180_data_g;
 
+	CDBG("%s:%d Enter\n", __func__, __LINE__);
+//	CDBG("%s:%d o_ctrl %p argp %p\n", __func__, __LINE__, o_ctrl, argp);
+	switch (cmd) {
+	case MSM_SD_SHUTDOWN:
+		client = i2c_getclient();
+		CDBG("ioclt VL6180_IOCTL_STOP\n");
+		mutex_lock(&vl6180_data->work_mutex);
+
+		//turn off p sensor only if it's enabled by other client
+		if (vl6180_data->enable_ps_sensor==1) {
+			//turn off p sensor
+			vl6180_data->enable_ps_sensor = 0;
+			if (vl6180_data->ps_is_singleshot == 0)
+				VL6180x_RangeSetSystemMode(vl6180x_dev, MODE_START_STOP);
+			VL6180x_RangeClearInterrupt(vl6180x_dev);
+
+			stmvl6180_set_enable(client, 0);
+
+			spin_lock_irqsave(&vl6180_data->update_lock.wait_lock, flags);
+			cancel_delayed_work(&vl6180_data->dwork);
+			spin_unlock_irqrestore(&vl6180_data->update_lock.wait_lock, flags);
+		}
+		mutex_unlock(&vl6180_data->work_mutex);
+	default:
+		return -ENOIOCTLCMD;
+	}
+}
+static int32_t msm_stmvl6180_power(struct v4l2_subdev *sd, int on)
+{
+	int rc = 0;
+	if(vl6180_data_g){
+		rc = stmvl6180_power_enable(vl6180_data_g, on);
+		if(rc<0)
+			pr_err("%s:%d stmvl6180 power down failed %d\n", __func__, __LINE__, rc);
+	}
+	return rc;
+}
+static struct v4l2_subdev_core_ops msm_stmvl6180_subdev_core_ops = {
+	.ioctl = msm_stmvl6180_subdev_ioctl,
+	.s_power = msm_stmvl6180_power,
+};
+static struct v4l2_subdev_ops msm_stmvl6180_subdev_ops = {
+	.core = &msm_stmvl6180_subdev_core_ops,
+};
+#endif
 /*
  * Initialization function
  */
@@ -996,13 +1048,26 @@ static int stmvl6180_init_client(struct stmvl6180_data *vl6180_data)
 	uint8_t model_major=0,model_minor=0;
 	uint8_t i=0,val;
 
-	// Read Model ID
-	VL6180x_RdByte(vl6180x_dev, VL6180_MODEL_ID_REG, &id);
-	CDBG("read MODLE_ID: 0x%x\n", id);
-	if (id == 0xb4) {
-		pr_err("STM VL6180 Found\n");
+	while(vl6180_data->force_reset_cnt++ < 3){
+		// Read Model ID
+		VL6180x_RdByte(vl6180x_dev, VL6180_MODEL_ID_REG, &id);
+		CDBG("read MODLE_ID: 0x%x, i2cAddr:0x%x\n", id, vl6180_data->i2c_client.cci_client->sid);
+		if (id == 0xb4) {
+			pr_err("STM VL6180 Found\n");
+			break;
+		}
+		else{
+			if((vl6180_data->act_device_type == MSM_CAMERA_I2C_DEVICE) && (vl6180_data->force_reset_cnt < 3)){// CCI device didn't need this, as the retries paramter of cci is 3.
+				pr_err("Not found STM VL6180, will reset and try again\n");
+				stmvl6180_power_enable(vl6180_data, 0);
+				msleep(10);
+				stmvl6180_power_enable(vl6180_data, 1);
+			}
+			else if(vl6180_data->act_device_type == MSM_CAMERA_PLATFORM_DEVICE)
+				break;
+		}
 	}
-	else if (id==0){
+	if (id != 0xb4){
 		pr_err("Not found STM VL6180\n");
 		return -EIO;
 	}
@@ -1032,6 +1097,7 @@ static int stmvl6180_init_client(struct stmvl6180_data *vl6180_data)
 	vl6180_data->delay_ms=20; //init to 20ms
 	vl6180_data->ps_data=0;			
 	vl6180_data->enableDebug=0;
+	vl6180_data->force_reset_cnt = 0;
 #ifdef CALIBRATION_FILE
 	stmvl6180_read_calibration_file();
 #endif
@@ -1195,6 +1261,7 @@ int stmvl6180_power_enable(struct stmvl6180_data *vl6180_data, unsigned int enab
 			}			
 						
 			vl6180_data->enable = 0;
+			vl6180_data->enable_ps_sensor = 0;
 		}
 	}
 	return rc;
@@ -1323,6 +1390,7 @@ static int32_t stmvl6180_platform_probe(struct platform_device *pdev)
 	/* Set device type as platform device */
 	vl6180_data->act_device_type = MSM_CAMERA_PLATFORM_DEVICE;
 	vl6180_data->i2c_client.i2c_func_tbl = &msm_sensor_cci_func_tbl;
+	vl6180_data->v4l2_subdev_ops = &msm_stmvl6180_subdev_ops;
 	vl6180_data->i2c_client.cci_client = kzalloc(sizeof(struct msm_camera_cci_client), GFP_KERNEL);
 	if (!vl6180_data->i2c_client.cci_client) {
 		rc = -ENOMEM;
@@ -1337,6 +1405,7 @@ static int32_t stmvl6180_platform_probe(struct platform_device *pdev)
 	cci_client->id_map = 0;
 	cci_client->cci_i2c_master = vl6180_data->cci_master;
 	vl6180_data->i2c_client.addr_type = MSM_CAMERA_I2C_WORD_ADDR;
+	vl6180_data->force_reset_cnt = 0;
 
 	rc = stmvl6180_power_enable(vl6180_data, 1);
 	if(rc){
@@ -1357,6 +1426,17 @@ static int32_t stmvl6180_platform_probe(struct platform_device *pdev)
 		pr_err("%s:%d failed rc %d\n", __func__, __LINE__, rc);
 		goto exit_kfree_client;
 	}	
+#ifdef VENDOR_EDIT
+	v4l2_subdev_init(&vl6180_data->msm_sd.sd,
+		vl6180_data->v4l2_subdev_ops);
+	vl6180_data->msm_sd.sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
+	snprintf(vl6180_data->msm_sd.sd.name,
+		ARRAY_SIZE(vl6180_data->msm_sd.sd.name), "msm_laser");
+	media_entity_init(&vl6180_data->msm_sd.sd.entity, 0, NULL, 0);
+	vl6180_data->msm_sd.sd.entity.type = MEDIA_ENT_T_V4L2_SUBDEV;
+	vl6180_data->msm_sd.close_seq = MSM_SD_CLOSE_1ST_CATEGORY | 0x3;
+	msm_sd_register(&vl6180_data->msm_sd);
+#endif
 
 	//to register as a misc device
 	rc = misc_register(&stmvl6180_ranging_dev);
@@ -1442,6 +1522,7 @@ static struct platform_driver stmvl6180_platform_driver = {
 static int stmvl6180_i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
 	struct stmvl6180_data *vl6180_data;
+	struct msm_camera_cci_client *cci_client = NULL;
 	int err = 0;
 	CDBG("start\n");
 
@@ -1508,34 +1589,63 @@ static int stmvl6180_i2c_probe(struct i2c_client *client, const struct i2c_devic
 	vl6180_dbgmsg("%s interrupt is hooked\n", __func__);
 #endif
 
+#ifdef VENDOR_EDIT
 	vl6180_data->act_device_type = MSM_CAMERA_I2C_DEVICE;//define I2C device
+	vl6180_data->i2c_client.i2c_func_tbl = &msm_sensor_cci_func_tbl;
+	vl6180_data->v4l2_subdev_ops = &msm_stmvl6180_subdev_ops;
+	vl6180_data->i2c_client.cci_client = kzalloc(sizeof(struct msm_camera_cci_client), GFP_KERNEL);
+	if (!vl6180_data->i2c_client.cci_client) {
+		err = -ENOMEM;
+		pr_err("%s:%d failed no memory\n", __func__, __LINE__);
+		goto exit_free_irq;
+	}
+	cci_client = vl6180_data->i2c_client.cci_client;
+	cci_client->cci_subdev = msm_cci_get_subdev();
+	cci_client->sid = VL6180_I2C_ADDRESS;
+	cci_client->retries = 3;
+	cci_client->id_map = 0;
+	cci_client->cci_i2c_master = vl6180_data->cci_master;
+	vl6180_data->i2c_client.addr_type = MSM_CAMERA_I2C_WORD_ADDR;
+#endif
 
 	err = stmvl6180_power_enable(vl6180_data, 1);
 	if(err) {
 		pr_err("%s:%d failed err %d\n", __func__, __LINE__, err);
-		goto exit_free_irq;
+		goto exit_kfree_client;
 	}
+	vl6180_data->force_reset_cnt = 0;
 
 	/* Initialize the STM VL6180 chip */
 	err = stmvl6180_init_client(vl6180_data);
 	if (err) {
 		stmvl6180_power_enable(vl6180_data, 0);	
 		pr_err("%s:%d failed err %d\n", __func__, __LINE__, err);
-		goto exit_free_irq;
+		goto exit_kfree_client;
 	}
 
 	err = stmvl6180_power_enable(vl6180_data, 0);
 	if(err) {
 		pr_err("%s:%d failed err %d\n", __func__, __LINE__, err);
-		goto exit_free_irq;
+		goto exit_kfree_client;
 	}	
 	INIT_DELAYED_WORK(&vl6180_data->dwork, stmvl6180_work_handler);
+#ifdef VENDOR_EDIT
+	v4l2_subdev_init(&vl6180_data->msm_sd.sd,
+		vl6180_data->v4l2_subdev_ops);
+	vl6180_data->msm_sd.sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
+	snprintf(vl6180_data->msm_sd.sd.name,
+		ARRAY_SIZE(vl6180_data->msm_sd.sd.name), "msm_laser");
+	media_entity_init(&vl6180_data->msm_sd.sd.entity, 0, NULL, 0);
+	vl6180_data->msm_sd.sd.entity.type = MEDIA_ENT_T_V4L2_SUBDEV;
+	vl6180_data->msm_sd.close_seq = MSM_SD_CLOSE_1ST_CATEGORY | 0x3;
+	msm_sd_register(&vl6180_data->msm_sd);
+#endif
 
 	//to register as a misc device
 	err = misc_register(&stmvl6180_ranging_dev);
 	if (err){
 		pr_err("%s:%d Could not register misc. dev for stmvl6180 ranging\n", __func__, __LINE__);
-		goto exit_free_irq;
+		goto exit_kfree_client;
 	}
 
 	/* Register to Input Device */
@@ -1543,7 +1653,7 @@ static int stmvl6180_i2c_probe(struct i2c_client *client, const struct i2c_devic
 	if (!vl6180_data->input_dev_ps) {
 		err = -ENOMEM;
 		pr_err("%s:%d Failed to allocate input device ps\n",__func__, __LINE__);
-		goto exit_free_irq;
+		goto exit_kfree_client;
 	}
 	vl6180_data->input_dev_ps->name = "STM VL6180 proximity sensor";	
 	set_bit(EV_ABS, vl6180_data->input_dev_ps->evbit);
@@ -1580,6 +1690,8 @@ exit_unregister_dev_ps:
 	input_unregister_device(vl6180_data->input_dev_ps);	
 exit_free_dev_ps:
 	input_free_device(vl6180_data->input_dev_ps);
+exit_kfree_client:
+	kfree(vl6180_data->i2c_client.cci_client);
 exit_free_irq:
 #ifdef USE_INT
 	free_irq(irq, client);

@@ -145,6 +145,10 @@ struct stmvl6180_data {
 	/* Debug */
 	unsigned int enableDebug;
 
+	unsigned int force_reset_cnt;
+	struct msm_sd_subdev msm_sd;
+	struct v4l2_subdev_ops *v4l2_subdev_ops;
+
 //old struct
 	struct msm_camera_i2c_client i2c_client;
 	enum msm_camera_device_type_t act_device_type;

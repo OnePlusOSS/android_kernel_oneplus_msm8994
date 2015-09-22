@@ -332,7 +332,12 @@ static void freeze_cgroup(struct freezer *freezer)
 
 	cgroup_iter_start(cgroup, &it);
 	while ((task = cgroup_iter_next(cgroup, &it)))
+#ifdef VENDOR_EDIT
+//huruihuan add for freezing task in cgroup despite of PF_FREEZER_SKIP flag
+        freeze_cgroup_task(task);
+#else
 		freeze_task(task);
+#endif
 	cgroup_iter_end(cgroup, &it);
 }
 

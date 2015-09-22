@@ -112,6 +112,29 @@ static void fake_signal_wake_up(struct task_struct *p)
  * RETURNS:
  * %false, if @p is not freezing or already frozen; %true, otherwise
  */
+#ifdef VENDOR_EDIT
+//huruihuan add for freezing task in cgroup despite of PF_FREEZER_SKIP flag
+bool freeze_cgroup_task(struct task_struct *p)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&freezer_lock, flags);
+	if (!freezing(p) || frozen(p)) {
+		spin_unlock_irqrestore(&freezer_lock, flags);
+		return false;
+	}
+
+	if (!(p->flags & PF_KTHREAD))
+		fake_signal_wake_up(p);
+	else
+		wake_up_state(p, TASK_INTERRUPTIBLE);
+
+	spin_unlock_irqrestore(&freezer_lock, flags);
+	return true;
+}
+
+#endif
+
 bool freeze_task(struct task_struct *p)
 {
 	unsigned long flags;

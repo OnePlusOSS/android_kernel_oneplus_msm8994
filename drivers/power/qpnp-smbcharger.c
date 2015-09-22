@@ -1017,7 +1017,7 @@ static int get_prop_batt_capacity(struct smbchg_chip *chip)
 
 static int soft_aicl(struct smbchg_chip *chip)
 {
-	int i, chg_vol;
+	int i, current_ma,chg_vol;
 	pr_debug("soft aicl s2:%s\n", __func__);
 	//qpnp_chg_vinmin_set(chip, 4440);
 	smbchg_set_high_usb_chg_current(chip, 400);
@@ -1027,95 +1027,66 @@ static int soft_aicl(struct smbchg_chip *chip)
 		chg_vol = get_prop_charger_voltage_now(chip);
 		if (chg_vol < (SOFT_AICL_VOL - 50)) {
 			chip->aicl_current = 300;
+			chip->usb_target_current_ma=chip->aicl_current;/* yangfangbiao@oneplus.cn,20150710  Add for usb thermal current limit */
 			pr_info("soft aicl s1:%d\n", chg_vol);
 			smbchg_set_high_usb_chg_current(chip, 300);
 			return 0;
 		}
 	}
-
-	smbchg_set_high_usb_chg_current(chip, 500);
+for(current_ma=500;current_ma< 1200;current_ma+= 100)
+{
+	smbchg_set_high_usb_chg_current(chip, current_ma);
 	for (i = 0; i < MAX_COUNT / 5; i++) {
 		if (!chip->usb_present)
 			goto aicl_err;
 		chg_vol = get_prop_charger_voltage_now(chip);
 		if (chg_vol < (SOFT_AICL_VOL - 50)) {
 			pr_info("soft aicl s2:%d\n", chg_vol);
-			smbchg_set_high_usb_chg_current(chip, 450);
-			chip->aicl_current = 450;
+			smbchg_set_high_usb_chg_current(chip, current_ma-100);
+			chip->aicl_current = current_ma-100;
+			chip->usb_target_current_ma=chip->aicl_current;/* yangfangbiao@oneplus.cn,20150710  Add for usb thermal current limit */
 			return 0;
 		}
 	}
-
-	smbchg_set_high_usb_chg_current(chip, 900);
-	for (i = 0; i < MAX_COUNT; i++) {
-		if (!chip->usb_present) {
-			smbchg_set_high_usb_chg_current(chip, 500);
-			chip->aicl_current = 500;
-			//chip->aicl_interrupt = true;
-			return 0;
-		}
-		chg_vol = get_prop_charger_voltage_now(chip);
-		if (chg_vol < SOFT_AICL_VOL) {
-			smbchg_set_high_usb_chg_current(chip, 500);
-			chip->aicl_current = 500;
-			if(!chip->usb_present) {
-				//chip->aicl_interrupt = true;
-			}
-			return 0;
-		}
-	}
-
-	smbchg_set_high_usb_chg_current(chip, 1200);
-	for (i = 0; i < MAX_COUNT; i++) {
-		if (!chip->usb_present) {
-			smbchg_set_high_usb_chg_current(chip, 900);
-			chip->aicl_current = 900;
-			//chip->aicl_interrupt = true;
-			return 0;
-		}
-		chg_vol = get_prop_charger_voltage_now(chip);
-		if (chg_vol < SOFT_AICL_VOL + 50) {
-			smbchg_set_high_usb_chg_current(chip, 900);
-			chip->aicl_current = 900;
-			if(!chip->usb_present) {
-				//chip->aicl_interrupt = true;
-			}
-			return 0;
-		}
-	}
-
-	smbchg_set_high_usb_chg_current(chip, 1500);
+}
+for(current_ma=1200;current_ma< 1900;current_ma+= 100)
+{
+	smbchg_set_high_usb_chg_current(chip, current_ma);
 	for (i = 0; i < MAX_COUNT + 30; i++) {
 		if (!chip->usb_present) {
 			//goto aicl_err;
-			smbchg_set_high_usb_chg_current(chip, 900);
-			chip->aicl_current = 900;
+			smbchg_set_high_usb_chg_current(chip, current_ma-100);
+			chip->aicl_current = current_ma-100;
+			chip->usb_target_current_ma=chip->aicl_current;/* yangfangbiao@oneplus.cn,20150710  Add for usb thermal current limit */
 			//chip->aicl_interrupt = true;
 			return 0;
 		}
 		if (i == 20)
-			smbchg_set_fastchg_current(chip, 1200);
+			smbchg_set_fastchg_current(chip, current_ma-300);
 		else if (i == 40)
-			smbchg_set_fastchg_current(chip, 1450);
+			smbchg_set_fastchg_current(chip, current_ma-200);
 		else if (i == 60)
-			smbchg_set_fastchg_current(chip, 1600);
+			smbchg_set_fastchg_current(chip, current_ma);
 		chg_vol = get_prop_charger_voltage_now(chip);
 		if (chg_vol < SOFT_AICL_VOL) {
-			smbchg_set_high_usb_chg_current(chip, 900);
-			chip->aicl_current = 900;
+			smbchg_set_high_usb_chg_current(chip, current_ma-100);
+			chip->aicl_current = current_ma-100;
+			chip->usb_target_current_ma=chip->aicl_current;/* yangfangbiao@oneplus.cn,20150710  Add for usb thermal current limit */
 			if (!chip->usb_present) {
 				//chip->aicl_interrupt = true;
 			}
 			return 0;
 		}
 	}
+}
 
-	smbchg_set_high_usb_chg_current(chip, 1910);
+	smbchg_set_high_usb_chg_current(chip, 2000);
 	for (i = 0; i < MAX_COUNT + 30; i++) {
 		if (!chip->usb_present) {
 			//goto aicl_err;
 			smbchg_set_high_usb_chg_current(chip, 1500);
 			chip->aicl_current = 1500;
+			chip->usb_target_current_ma=chip->aicl_current;/* yangfangbiao@oneplus.cn,20150710  Add for usb thermal current limit */
 			//chip->aicl_interrupt = true;
 			return 0;
 		}
@@ -1124,12 +1095,13 @@ static int soft_aicl(struct smbchg_chip *chip)
 		else if (i == 40)
 			smbchg_set_fastchg_current(chip, 1850);
 		else if (i == 60)
-			smbchg_set_fastchg_current(chip, 1910);
+			smbchg_set_fastchg_current(chip, 2000);
 		chg_vol = get_prop_charger_voltage_now(chip);
 		if (chg_vol < SOFT_AICL_VOL - 30) {
 
-			smbchg_set_high_usb_chg_current(chip, 1200);
-			chip->aicl_current = 1500;
+			smbchg_set_high_usb_chg_current(chip, 1850);
+			chip->aicl_current = 1850;
+			chip->usb_target_current_ma=chip->aicl_current;/* yangfangbiao@oneplus.cn,20150710  Add for usb thermal current limit */
 			if (!chip->usb_present) {
 				//chip->aicl_interrupt = true;
 			}
@@ -1137,8 +1109,9 @@ static int soft_aicl(struct smbchg_chip *chip)
 		}
 	}
 
-	smbchg_set_high_usb_chg_current(chip, 1910);
-	chip->aicl_current = 1910;
+	smbchg_set_high_usb_chg_current(chip, 2000);
+	chip->aicl_current = 2000;
+	chip->usb_target_current_ma=chip->aicl_current;/* yangfangbiao@oneplus.cn,20150710  Add for usb thermal current limit */
 	return 0;
 
 aicl_err:
@@ -1372,9 +1345,13 @@ static int calc_thermal_limited_current(struct smbchg_chip *chip,
 						int current_ma)
 {
 	int therm_ma;
-
+#ifdef VENDOR_EDIT//when thermal  system temperature level is 3,do not suspend usb,just set iusb to 300MA
 	if (chip->therm_lvl_sel > 0
+			&& chip->therm_lvl_sel <= (chip->thermal_levels - 1)) {
+#else
+if (chip->therm_lvl_sel > 0
 			&& chip->therm_lvl_sel < (chip->thermal_levels - 1)) {
+#endif
 		/*
 		 * consider thermal limit only when it is active and not at
 		 * the highest level
@@ -1411,7 +1388,7 @@ static int smbchg_charging_en(struct smbchg_chip *chip, bool en)
 static int smbchg_usb_suspend(struct smbchg_chip *chip, bool suspend)
 {
 	int rc;
-
+	pr_err("%s:suspend =%d\n",__func__,suspend);
 	rc = smbchg_masked_write(chip, chip->usb_chgpth_base + CMD_IL,
 			USBIN_SUSPEND_BIT, suspend ? USBIN_SUSPEND_BIT : 0);
 	if (rc < 0)
@@ -1695,7 +1672,9 @@ static int smbchg_set_high_usb_chg_current(struct smbchg_chip *chip,
 {
 	int i, rc;
 	u8 usb_cur_val;
-
+	if (current_ma != chip->usb_max_current_ma) { //#ifdef VENDOR_EDIT if set current is the same with before value do not print
+	pr_err("%s:%d\n",__func__,current_ma);
+		}
 	for (i = ARRAY_SIZE(usb_current_table) - 1; i >= 0; i--) {
 		if (current_ma >= usb_current_table[i])
 			break;
@@ -1969,7 +1948,7 @@ static int smbchg_set_fastchg_current_raw(struct smbchg_chip *chip,
 	}
 	pr_smb(PR_STATUS, "fastcharge current requested %d, set to %d\n",
 			current_ma, usb_current_table[cur_val]);
-
+	pr_err("%s:%d\n",__func__,current_ma);
 	chip->fastchg_current_ma = usb_current_table[cur_val];
 	return rc;
 }
@@ -2718,15 +2697,13 @@ static int smbchg_set_thermal_limited_usb_current_max(struct smbchg_chip *chip,
 		return rc;
 	}
 
-	pr_smb(PR_STATUS, "AICL = %d, ICL = %d\n",
+	pr_err("AICL = %d, ICL = %d\n",
 			aicl_ma, chip->usb_max_current_ma);
 	if (chip->usb_max_current_ma > aicl_ma && smbchg_is_aicl_complete(chip))
 		smbchg_rerun_aicl(chip);
 	smbchg_parallel_usb_check_ok(chip);
 	return rc;
 }
-#ifdef VENDOR_EDIT
-#else
 static int smbchg_system_temp_level_set(struct smbchg_chip *chip,
 								int lvl_sel)
 {
@@ -2755,6 +2732,9 @@ static int smbchg_system_temp_level_set(struct smbchg_chip *chip,
 	mutex_lock(&chip->current_change_lock);
 	prev_therm_lvl = chip->therm_lvl_sel;
 	chip->therm_lvl_sel = lvl_sel;
+#ifdef VENDOR_EDIT	//when thermal  system temperature level is 3,do not suspend usb,just set iusb to 300MA
+	//do nothing
+#else
 	if (chip->therm_lvl_sel == (chip->thermal_levels - 1)) {
 		/*
 		 * Disable charging if highest value selected by
@@ -2774,7 +2754,7 @@ static int smbchg_system_temp_level_set(struct smbchg_chip *chip,
 		}
 		goto out;
 	}
-
+#endif
 	rc = smbchg_set_thermal_limited_usb_current_max(chip,
 					chip->usb_target_current_ma);
 	rc = smbchg_set_thermal_limited_dc_current_max(chip,
@@ -2804,7 +2784,6 @@ out:
 	return rc;
 }
 
-#endif
 static int smbchg_ibat_ocp_threshold_ua = 4500000;
 module_param(smbchg_ibat_ocp_threshold_ua, int, 0644);
 
@@ -3089,25 +3068,17 @@ static int smbchg_battery_set_property(struct power_supply *psy,
 		power_supply_changed(&chip->batt_psy);
 		break;
 	case POWER_SUPPLY_PROP_SYSTEM_TEMP_LEVEL:
-
-#ifdef VENDOR_EDIT
-
-#else
 		smbchg_system_temp_level_set(chip, val->intval);
-#endif
+		pr_err("system_temp_level_set_form_userspace:%d\n",val->intval);
 		break;
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX:
 		rc = smbchg_set_fastchg_current_user(chip, val->intval / 1000);
-#ifdef VENDOR_EDIT
-#else
 		rc = smbchg_set_fastchg_current(chip, val->intval / 1000);
-#endif
+		pr_err("set_fastchg_current_form_userspace:%d\n",val->intval);
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
-#ifdef VENDOR_EDIT
-#else
 		rc = smbchg_float_voltage_set(chip, val->intval);
-#endif
+		pr_err("float_voltage_set_form_userspace:%d\n",val->intval);
 		break;
 	case POWER_SUPPLY_PROP_SAFETY_TIMER_ENABLE:
 		rc = smbchg_safety_timer_enable(chip, val->intval);
@@ -3739,14 +3710,14 @@ static void smbchg_external_power_changed(struct power_supply *psy)
 			"could not read USB current_max property, rc=%d\n", rc);
 	else
 		current_limit = prop.intval / 1000;
-
+	if(0!=current_limit)
+	pr_err("current_limit = %d\n", current_limit);
 	pr_smb(PR_MISC, "current_limit = %d\n", current_limit);
 #ifdef VENDOR_EDIT
 	if (prop.intval <= 2  && get_prop_batt_present(chip)) {
 
 				//smbchg_charging_en(chip, 0);
-
-				qpnp_battery_temp_region_set(chip, CV_BATTERY_TEMP_REGION__INVALID);
+				pre_current_limit_value=0;  //charger removed,set pre_current_limit_value 0
 				chip->charger_status = CHARGER_STATUS_GOOD;
 				chip->aicl_current = 0;
 			}
@@ -3755,7 +3726,17 @@ if((current_limit != 0)&&(current_limit != pre_current_limit_value))
    //if current_limmit is the same with before value ,do not check  qpnp_check_battery_temp
 	chip->is_power_changed =true;
 	qpnp_check_battery_temp(chip);
+	 //use oem temp control logic
+	mutex_lock(&chip->current_change_lock);
+		pr_info("changed chip->usb_target_current_ma = %d\n",
+				chip->usb_target_current_ma);
+		rc = smbchg_set_thermal_limited_usb_current_max(chip,
+				chip->usb_target_current_ma);
+		if (rc < 0)
+			dev_err(chip->dev,
+				"Couldn't set usb current rc = %d\n", rc);
 	pre_current_limit_value = current_limit;
+	mutex_unlock(&chip->current_change_lock);
 }
 #endif
 
@@ -6780,6 +6761,7 @@ static int handle_batt_temp_little_cold(struct smbchg_chip *chip)
 
 				smbchg_set_usb_current_max(chip, ret.intval / 1000);
 				smbchg_rerun_aicl(chip);
+				chip->usb_target_current_ma=500;/* yangfangbiao@oneplus.cn,20150710  Add for usb thermal current limit */
 			} else {
 				if(chip->aicl_current == 0) {
 					soft_aicl(chip);
@@ -6787,13 +6769,20 @@ static int handle_batt_temp_little_cold(struct smbchg_chip *chip)
 					if((chip->oem_lcd_is_on==true)&&(chip->aicl_current > chip->lcd_on_iusb))
 						{
 						smbchg_set_usb_current_max(chip, chip->lcd_on_iusb);
+				        chip->usb_target_current_ma=chip->lcd_on_iusb;/* yangfangbiao@oneplus.cn,20150710  Add for usb thermal current limit */
 						smbchg_rerun_aicl(chip);
 						}
 				} else {
 						if((chip->oem_lcd_is_on==true)&&(chip->aicl_current > chip->lcd_on_iusb))
+						{
 						smbchg_set_usb_current_max(chip,chip->lcd_on_iusb);
+						chip->usb_target_current_ma=chip->lcd_on_iusb;/* yangfangbiao@oneplus.cn,20150710  Add for usb thermal current limit */
+						}
 						else
+						{
 						smbchg_set_usb_current_max(chip, chip->aicl_current);
+						chip->usb_target_current_ma=chip->aicl_current;/* yangfangbiao@oneplus.cn,20150710  Add for usb thermal current limit */
+						}
 						smbchg_rerun_aicl(chip);
 						}
 			}
@@ -6839,6 +6828,7 @@ static int handle_batt_temp_cool(struct smbchg_chip *chip)
 				chip->usb_psy->get_property(chip->usb_psy,
 					  POWER_SUPPLY_PROP_CURRENT_MAX, &ret);
 				if(ret.intval / 1000 == 500) {
+				chip->usb_target_current_ma=500;/* yangfangbiao@oneplus.cn,20150710  Add for usb thermal current limit */
 					smbchg_set_usb_current_max(chip, ret.intval / 1000);
 					smbchg_rerun_aicl(chip);
 				} else {
@@ -6846,14 +6836,21 @@ static int handle_batt_temp_cool(struct smbchg_chip *chip)
 						soft_aicl(chip);
 						if((chip->oem_lcd_is_on==true)&&(chip->aicl_current > chip->lcd_on_iusb))
 								{
-								smbchg_set_usb_current_max(chip, chip->lcd_on_iusb);
+								smbchg_set_usb_current_max(chip, calc_thermal_limited_current(chip, chip->lcd_on_iusb));
 								smbchg_rerun_aicl(chip);
+								chip->usb_target_current_ma=chip->lcd_on_iusb;/* yangfangbiao@oneplus.cn,20150710  Add for usb thermal current limit */
 							}
 					} else {
 							if((chip->oem_lcd_is_on==true)&&(chip->aicl_current > chip->lcd_on_iusb))
-						        smbchg_set_usb_current_max(chip,chip->lcd_on_iusb);
+								{
+						        smbchg_set_usb_current_max(chip,calc_thermal_limited_current(chip, chip->lcd_on_iusb));
+								chip->usb_target_current_ma=chip->lcd_on_iusb;/* yangfangbiao@oneplus.cn,20150710	Add for usb thermal current limit */
+								}
 							else
-								smbchg_set_usb_current_max(chip, chip->aicl_current);
+								{
+								smbchg_set_usb_current_max(chip, calc_thermal_limited_current(chip, chip->aicl_current));
+								chip->usb_target_current_ma=chip->aicl_current;/* yangfangbiao@oneplus.cn,20150710	Add for usb thermal current limit */
+								}
 								smbchg_rerun_aicl(chip);
 					}
 					}
@@ -6909,21 +6906,29 @@ static int handle_batt_temp_little_cool(struct smbchg_chip *chip)
 						  POWER_SUPPLY_PROP_CURRENT_MAX, &ret);
 					if(ret.intval / 1000 == 500) {
 						smbchg_set_usb_current_max(chip, ret.intval / 1000);
+						chip->usb_target_current_ma=500;/* yangfangbiao@oneplus.cn,20150710  Add for usb thermal current limit */
 						smbchg_rerun_aicl(chip);
 					} else {
 						if(chip->aicl_current == 0) {
 							soft_aicl(chip);
 							if((chip->oem_lcd_is_on==true)&&(chip->aicl_current > chip->lcd_on_iusb))
 								{
-								smbchg_set_usb_current_max(chip, chip->lcd_on_iusb);
+								smbchg_set_usb_current_max(chip, calc_thermal_limited_current(chip, chip->lcd_on_iusb));
 								smbchg_rerun_aicl(chip);
+								chip->usb_target_current_ma=chip->lcd_on_iusb;/* yangfangbiao@oneplus.cn,20150710  Add for usb thermal current limit */
 							}
 						} else {
 
 								if((chip->oem_lcd_is_on==true)&&(chip->aicl_current > chip->lcd_on_iusb))
-						        smbchg_set_usb_current_max(chip,chip->lcd_on_iusb);
+								{
+						        smbchg_set_usb_current_max(chip,calc_thermal_limited_current(chip, chip->lcd_on_iusb));
+								chip->usb_target_current_ma=chip->lcd_on_iusb;/* yangfangbiao@oneplus.cn,20150710	Add for usb thermal current limit */
+								}
 							else
-								smbchg_set_usb_current_max(chip, chip->aicl_current);
+								{
+								smbchg_set_usb_current_max(chip, calc_thermal_limited_current(chip, chip->aicl_current));
+								chip->usb_target_current_ma=chip->aicl_current;/* yangfangbiao@oneplus.cn,20150710	Add for usb thermal current limit */
+								}
 								smbchg_rerun_aicl(chip);
 						}
 						}
@@ -6979,21 +6984,29 @@ static int handle_batt_temp_normal(struct smbchg_chip *chip)
 						  POWER_SUPPLY_PROP_CURRENT_MAX, &ret);
 					if(ret.intval / 1000 == 500) {
 						smbchg_set_usb_current_max(chip, ret.intval / 1000);
+						chip->usb_target_current_ma=500;/* yangfangbiao@oneplus.cn,20150710  Add for usb thermal current limit */
 						smbchg_rerun_aicl(chip);
 					} else {
 						if(chip->aicl_current == 0) {
 							soft_aicl(chip);
 							if((chip->oem_lcd_is_on==true)&&(chip->aicl_current > chip->lcd_on_iusb))
 								{
-								smbchg_set_usb_current_max(chip, chip->lcd_on_iusb);
+								smbchg_set_usb_current_max(chip, calc_thermal_limited_current(chip, chip->lcd_on_iusb));
 								smbchg_rerun_aicl(chip);
+								chip->usb_target_current_ma=chip->lcd_on_iusb;/* yangfangbiao@oneplus.cn,20150710  Add for usb thermal current limit */
 							}
 						} else {
 
 						if((chip->oem_lcd_is_on==true)&&(chip->aicl_current > chip->lcd_on_iusb))
-						        smbchg_set_usb_current_max(chip,chip->lcd_on_iusb);
+								{
+						        smbchg_set_usb_current_max(chip,calc_thermal_limited_current(chip, chip->lcd_on_iusb));
+								chip->usb_target_current_ma=chip->lcd_on_iusb;/* yangfangbiao@oneplus.cn,20150710	Add for usb thermal current limit */
+								}
 							else
-								smbchg_set_usb_current_max(chip, chip->aicl_current);
+								{
+								smbchg_set_usb_current_max(chip, calc_thermal_limited_current(chip, chip->aicl_current));
+								chip->usb_target_current_ma=chip->aicl_current;/* yangfangbiao@oneplus.cn,20150710	Add for usb thermal current limit */
+								}
 								smbchg_rerun_aicl(chip);
 						}
 						}
@@ -7048,20 +7061,28 @@ static int handle_batt_temp_warm(struct smbchg_chip *chip)
 						  POWER_SUPPLY_PROP_CURRENT_MAX, &ret);
 					if(ret.intval / 1000 == 500) {
 						smbchg_set_usb_current_max(chip, ret.intval / 1000);
+						chip->usb_target_current_ma=500;/* yangfangbiao@oneplus.cn,20150710  Add for usb thermal current limit */
 						smbchg_rerun_aicl(chip);
 					} else {
 						if(chip->aicl_current == 0) {
 							soft_aicl(chip);
 							if((chip->oem_lcd_is_on==true)&&(chip->aicl_current > chip->lcd_on_iusb))
 								{
-								smbchg_set_usb_current_max(chip, chip->lcd_on_iusb);
+								smbchg_set_usb_current_max(chip, calc_thermal_limited_current(chip, chip->lcd_on_iusb));
 								smbchg_rerun_aicl(chip);
+								chip->usb_target_current_ma=chip->lcd_on_iusb;/* yangfangbiao@oneplus.cn,20150710  Add for usb thermal current limit */
 							}
 						} else {
 								if((chip->oem_lcd_is_on==true)&&(chip->aicl_current > chip->lcd_on_iusb))
-						        smbchg_set_usb_current_max(chip,chip->lcd_on_iusb);
+								{
+						        smbchg_set_usb_current_max(chip,calc_thermal_limited_current(chip, chip->lcd_on_iusb));
+								chip->usb_target_current_ma=chip->lcd_on_iusb;/* yangfangbiao@oneplus.cn,20150710	Add for usb thermal current limit */
+								}
 							else
-								smbchg_set_usb_current_max(chip, chip->aicl_current);
+								{
+								smbchg_set_usb_current_max(chip, calc_thermal_limited_current(chip, chip->aicl_current));
+								chip->usb_target_current_ma=chip->aicl_current;/* yangfangbiao@oneplus.cn,20150710	Add for usb thermal current limit */
+								}
 								smbchg_rerun_aicl(chip);
 						}
 						}
@@ -7099,7 +7120,8 @@ static int handle_batt_temp_hot(struct smbchg_chip *chip)
 	{
 		chip->is_power_changed = false;
 		pr_debug("%s\n", __func__);
-		smbchg_set_usb_current_max(chip, 1500);
+		smbchg_set_usb_current_max(chip, calc_thermal_limited_current(chip, 1500));
+		chip->usb_target_current_ma=1500;/* yangfangbiao@oneplus.cn,20150710  Add for usb thermal current limit */
 		smbchg_rerun_aicl(chip);
 		smbchg_charging_en(chip, 0);
 
@@ -7201,7 +7223,7 @@ static void qpnp_charge_info_init(struct smbchg_chip *chip)
 	chip->temp_littel_cool_current = 1300;  // Vterm=4.32V	I=0.5C ,  10 <= T < 20
 	chip->temp_normal_current 	 = 1910;  //   Vterm=4.3V		I=1.5C/2C ,  20 <= T < = 45
 	chip->temp_warm_current		 =900;  //    Vterm=4.0V		I=0.5c , 45 <= T < 55
-	chip->lcd_on_iusb = 1000;
+	chip->lcd_on_iusb = 2100;
 
 	chip->oem_lcd_is_on =false;
 	chip->time_out = false;
@@ -7229,12 +7251,13 @@ static int fb_notifier_callback(struct notifier_block *self,
 					pr_debug(" %s FB_BLANK_UNBLANK\n",__func__);
 					if(chip->aicl_current != 0) {
 						if (chip->aicl_current >= chip->lcd_on_iusb) {
-
-								smbchg_set_usb_current_max(chip, chip->lcd_on_iusb);
+							/* yangfangbiao@oneplus.cn,20150710  Add for usb thermal current limit */
+							smbchg_set_usb_current_max(chip, calc_thermal_limited_current(chip, chip->lcd_on_iusb));
 							smbchg_rerun_aicl(chip);
 
 						} else {
-							smbchg_set_usb_current_max(chip, chip->aicl_current);
+							/* yangfangbiao@oneplus.cn,20150710  Add for usb thermal current limit */
+							smbchg_set_usb_current_max(chip, calc_thermal_limited_current(chip, chip->aicl_current));
 							smbchg_rerun_aicl(chip);
 						}
 						}
@@ -7245,7 +7268,8 @@ static int fb_notifier_callback(struct notifier_block *self,
 					chip->oem_lcd_is_on =false;
 					pr_debug(" %s FB_BLANK_POWERDOWN\n",__func__);
 					if(chip->aicl_current != 0) {
-						smbchg_set_usb_current_max(chip, chip->aicl_current);
+						/* yangfangbiao@oneplus.cn,20150710  Add for usb thermal current limit */
+						smbchg_set_usb_current_max(chip, calc_thermal_limited_current(chip, chip->aicl_current));
 						smbchg_rerun_aicl(chip);
 					}
 
@@ -7482,18 +7506,22 @@ static int set_pmi_reset_type(const char *val, struct kernel_param *kp)
     static bool read_pmi_reset_type = false;
 
     if(g_chip==NULL || g_chip->spmi==NULL || g_chip->spmi->sid!=2){
-        pr_info("g_chip not right. sid :%d\n", g_chip->spmi?g_chip->spmi->sid:-1);
+        if(g_chip){
+            pr_info("%s : g_chip not right. sid :%d\n", __func__, g_chip->spmi?g_chip->spmi->sid:-1);
+        }else{
+            pr_info("%s : g_chip is NULL\n", __func__);
+        }
         return -1;
     }
 
     if(!read_pmi_reset_type){
         ret = smbchg_read(g_chip, &default_pmi_reset_type, PMI_PON_PS_HOLD_RESET_CTL, 1);
         if(ret){
-            pr_err("Failed to read addr[0x%x], ret=%d,reg=%02X\n",
-                PMI_PON_PS_HOLD_RESET_CTL, ret, default_pmi_reset_type);
+            pr_err("%s : Failed to read addr[0x%x], ret=%d,reg=%02X\n",
+                __func__, PMI_PON_PS_HOLD_RESET_CTL, ret, default_pmi_reset_type);
             read_pmi_reset_type = false;
         }else{
-            pr_info("default_pmi_reset_type=%d\n", default_pmi_reset_type);
+            pr_info("%s : default_pmi_reset_type=%d\n", __func__, default_pmi_reset_type);
             read_pmi_reset_type = true;
         }
     }
@@ -7505,13 +7533,13 @@ static int set_pmi_reset_type(const char *val, struct kernel_param *kp)
     }else{
         rst_type = pmi_reset_type;
     }
-    pr_info("Pass pmi_reset_type %d from userspace, set pmi reset type to %d\n",
-            pmi_reset_type, rst_type);
+    pr_info("%s : Pass pmi_reset_type %d from userspace, set pmi reset type to %d\n",
+            __func__, pmi_reset_type, rst_type);
 
     ret = smbchg_write(g_chip, &rst_type, PMI_PON_PS_HOLD_RESET_CTL, 1);
     if(ret){
-        pr_err("Failed to write addr[0x%x], ret=%d,reg=%02X\n",
-            PMI_PON_PS_HOLD_RESET_CTL, ret, rst_type);
+        pr_err("%s : Failed to write addr[0x%x], ret=%d,reg=%02X\n",
+            __func__, PMI_PON_PS_HOLD_RESET_CTL, ret, rst_type);
     }
 
     return ret;

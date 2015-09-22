@@ -1649,6 +1649,21 @@ static void update_history(struct rq *rq, struct task_struct *p,
 	if (!runtime || is_idle_task(p) || exiting_task(p) || !samples)
 			goto done;
 
+#ifdef VENDOR_EDIT
+	if (p->ravg.mitigated) {
+		/* update history accroding to previous records
+		 * e.g. 60% loading in big cluster becomes 60% in smallest one
+		 */
+		for (ridx = 0; ridx < sched_ravg_hist_size; ridx++) {
+			hist[ridx] = div64_u64((u64)hist[ridx] * 1024
+					, (u64)max_load_scale_factor);
+			sum += hist[ridx];
+			if (hist[ridx] > max)
+				max = hist[ridx];
+		}
+		goto update_demand;
+	}
+#endif
 	/* Push new 'runtime' value onto stack */
 	widx = sched_ravg_hist_size - 1;
 	ridx = widx - samples;
@@ -1666,6 +1681,9 @@ static void update_history(struct rq *rq, struct task_struct *p,
 			max = hist[widx];
 	}
 
+#ifdef VENDOR_EDIT
+update_demand:
+#endif
 	p->ravg.sum = 0;
 	if (p->on_rq)
 		p->sched_class->dec_hmp_sched_stats(rq, p);
@@ -1758,7 +1776,11 @@ static void update_task_demand(struct task_struct *p, struct rq *rq,
 	u32 window_size = sched_ravg_window;
 
 	new_window = mark_start < window_start;
+#ifdef VENDOR_EDIT
+	if (!account_busy_for_task_demand(p, event) || p->ravg.mitigated) {
+#else
 	if (!account_busy_for_task_demand(p, event)) {
+#endif
 		if (new_window)
 			/* If the time accounted isn't being accounted as
 			 * busy time, and a new window started, only the
@@ -1767,6 +1789,13 @@ static void update_task_demand(struct task_struct *p, struct rq *rq,
 			 * elapsed, but since empty windows are dropped,
 			 * it is not necessary to account those. */
 			update_history(rq, p, p->ravg.sum, 1, event);
+#ifdef VENDOR_EDIT
+		if (p->ravg.mitigated) {
+			/* force update history */
+			update_history(rq, p, 1, RAVG_HIST_SIZE_MAX, event);
+			p->ravg.mitigated = 0;
+		}
+#endif
 		return;
 	}
 
