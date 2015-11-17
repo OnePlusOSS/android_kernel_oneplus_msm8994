@@ -1534,9 +1534,6 @@ static int smbchg_battchg_en(struct smbchg_chip *chip, bool enable,
 		enum battchg_enable_reason reason, bool *changed)
 {
 	int rc = 0, battchg_disabled;
-#ifdef  VENDOR_EDIT /* yangfangbiao@oneplus.cn,20150710 Add to  avoid  enable charge when temp is  unnormal or charge time out */
-	int temp = get_prop_batt_temp(chip);
-#endif
 
 	pr_smb(PR_STATUS, "battchg %s, susp = %02x, en? = %d, reason = %02x\n",
 			chip->battchg_disabled == 0 ? "enabled" : "disabled",
@@ -1558,9 +1555,7 @@ static int smbchg_battchg_en(struct smbchg_chip *chip, bool enable,
 	pr_err("chg_en %s:enable =%d\n",__func__, enable);
 	rc = smbchg_charging_en(chip,
 	(!battchg_disabled
-	&& ((temp > chip->mBatteryTempBoundT0)
-	&& (temp < chip->mBatteryTempBoundT5 )
-	&& chip->time_out != true)));
+	&& chip->time_out != true));
 #else
 	rc = smbchg_charging_en(chip, !battchg_disabled);
 #endif
@@ -4655,14 +4650,7 @@ static void handle_usb_insertion(struct smbchg_chip *chip)
 
 	pr_smb(PR_STATUS, "triggered\n");
 	#ifdef VENDOR_EDIT
-	  if(chip->chg_done==true || chip->time_out == true )
-		{
-			chip->chg_done=false;// usb plug in agin ,set chg_done false
-
-			chip->time_out = false;// usb plug agin ,set charge time_out false
-			chip->recharge_status=false;// usb plug agin ,set  recharge_status false
 			smbchg_charging_en(chip, 1);// usb plug in agin ,enable charge
-		}
     #endif
 	/* usb inserted */
 	read_usb_type(chip, &usb_type_name, &usb_supply_type);

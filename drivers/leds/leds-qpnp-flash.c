@@ -25,6 +25,7 @@
 #include <linux/workqueue.h>
 #include <linux/power_supply.h>
 #include "leds.h"
+#include <linux/qpnp/power-on.h>
 #ifdef VENDOR_EDIT
 //added by zhangxiaowei@camera 20150413  for product mode flashlight
 #include <asm/uaccess.h>
@@ -217,6 +218,7 @@ struct qpnp_flash_led {
 	struct flash_led_platform_data	*pdata;
 	struct flash_node_data		*flash_node;
 	struct power_supply		*battery_psy;
+        struct device_node		*pon_dev;
 	struct mutex			flash_led_lock;
 	int				num_leds;
 	u16				base;
@@ -573,6 +575,12 @@ static int qpnp_flash_led_module_disable(struct qpnp_flash_led *led,
 				return -EINVAL;
 			}
 		}
+		rc = qpnp_pon_set_rb_spare(led->pon_dev, false);
+		if (rc) {
+			dev_err(&led->spmi_dev->dev,
+				"failed to set rb_spare\n");
+			return -EINVAL;
+		}
 	} else {
 		rc = qpnp_led_masked_write(led->spmi_dev,
 			FLASH_MODULE_ENABLE_CTRL(led->base),
@@ -661,6 +669,7 @@ static void qpnp_flash_led_work(struct work_struct *work)
 #ifdef VENDOR_EDIT
 #ifdef FLASH_MAIN_CLOSE_BACKLIGHT
 	char brightness_new[10]="0";
+	int i;
 #endif
 #endif
 
@@ -696,6 +705,12 @@ static void qpnp_flash_led_work(struct work_struct *work)
 	}
 
 	if (flash_node->type == TORCH) {
+		rc = qpnp_pon_set_rb_spare(led->pon_dev, true);
+		if (rc) {
+			dev_err(&led->spmi_dev->dev,
+				"failed to set rb_spare\n");
+			goto exit_flash_led_work;
+		}
 		rc = qpnp_led_masked_write(led->spmi_dev,
 			FLASH_LED_UNLOCK_SECURE(led->base),
 			FLASH_SECURE_MASK, FLASH_UNLOCK_SECURE);
@@ -899,6 +914,12 @@ error_regulator_enable:
 	if(flash_node->backlight_flag&&LED_OFF == brightness&&!flash_node->id){
 		flash_node->backlight_flag = false;
 		if(flash_node->backlight_buf){
+		    for(i=0;i<strlen(flash_node->backlight_buf);i++){
+               if(flash_node->backlight_buf[i]<'0'||
+                  flash_node->backlight_buf[i]>'9')
+                  break;
+			}
+			flash_node->backlight_buf[i] = '\0';
 			rc = qpnp_flash_led_backlight_set(flash_node->backlight_buf);
 			if(rc < 0){
 				pr_err("Invalid set back light\n");
@@ -926,11 +947,18 @@ static void qpnp_flash_led_backlight_work(struct work_struct *work)
 	struct qpnp_flash_led *led =
 			dev_get_drvdata(&flash_node->spmi_dev->dev);
 	int rc;
+	int i;
 
 	mutex_lock(&led->flash_led_lock);
 	if(flash_node->backlight_flag){
 		flash_node->backlight_flag = false;
 		if(flash_node->backlight_buf){
+		    for(i=0;i<strlen(flash_node->backlight_buf);i++){
+               if(flash_node->backlight_buf[i]<'0'||
+                  flash_node->backlight_buf[i]>'9')
+                  break;
+			}
+			flash_node->backlight_buf[i] = '\0';
 			rc = qpnp_flash_led_backlight_set(flash_node->backlight_buf);
 			if(rc < 0){
 				pr_err("Invalid set back light\n");
@@ -1728,6 +1756,9 @@ static int qpnp_flash_led_probe(struct spmi_device *spmi)
 	}
 
 	led->num_leds = i;
+        led->pon_dev = of_parse_phandle(node, "qcom,pon-dev", 0);
+        if (!led->pon_dev)
+            pr_err("No pon-dev specified!\n");
 
 	dev_set_drvdata(&spmi->dev, led);
 #ifdef VENDOR_EDIT
