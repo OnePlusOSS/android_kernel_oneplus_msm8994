@@ -332,7 +332,7 @@
 			qcom,fg-cc-cv-threshold-mv = <4310>;
 			qcom,fg-iterm-ma = <200>;
 			qcom,fg-cutoff-voltage-mv=<3500>;
-
+			qcom,pmic-revid = <&pmi8994_revid>;
                         qcom,thermal-coefficients = [da 86 f0 50 08 3c];
 			qcom,fg-soc@4000 {
 				status = "okay";

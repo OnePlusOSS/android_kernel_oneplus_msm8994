@@ -3612,7 +3612,11 @@ int mdss_mdp_hist_start(struct mdp_histogram_start_req *req)
 				goto hist_stop_clk;
 			}
 			hist_info = &mdss_pp_res->dspp_hist[dspp_num];
+
 			hist_info->disp_num = PP_BLOCK(req->block);//qualcomm provide patch in 2015-07-03 add
+
+
+
 			ret = pp_hist_enable(hist_info, req);
 			mdss_pp_res->pp_disp_flags[disp_num] |=
 							PP_FLAGS_DIRTY_HIST_COL;
@@ -3666,37 +3670,14 @@ static int pp_hist_stop_wrapper(struct msm_fb_data_type *mfd)
 int mdss_mdp_hist_stop(u32 block)
 {
 	int i, ret = 0;
-
-	//u32 dspp_num, disp_num; 	/*qualcomm provide patch in 2015-07-03*/
 	u32 disp_num;
 	struct pp_hist_col_info *hist_info;
-	//u32 mixer_cnt, mixer_id[MDSS_MDP_INTF_MAX_LAYERMIXER];/*qualcomm provide patch in 2015-07-03*/
 	struct mdss_mdp_pipe *pipe;
 	struct mdss_data_type *mdata = mdss_mdp_get_mdata();
-/*
-	if ((PP_BLOCK(block) < MDP_LOGICAL_BLOCK_DISP_0) ||
-		(PP_BLOCK(block) >= MDP_BLOCK_MAX))
-		return -EINVAL;
-*/ //qualcomm provide patch in 2015-07-03
+
 	if (!mdata)
 		return -EPERM;
-	/* 
-	disp_num = PP_BLOCK(block) - MDP_LOGICAL_BLOCK_DISP_0;
-	mixer_cnt = mdss_mdp_get_ctl_mixers(disp_num, mixer_id);
 
-	if (!mixer_cnt) {
-		pr_err("%s, no dspp connects to disp %d\n",
-			__func__, disp_num);
-		ret = -EPERM;
-		goto hist_stop_exit;
-	}
-	if (mixer_cnt > mdata->nmixers_intf) {
-		pr_err("%s, Too many dspp connects to disp %d\n",
-			__func__, mixer_cnt);
-		ret = -EPERM;
-		goto hist_stop_exit;
-	}
-	*/	//qualcomm provide patch in 2015-07-03
 	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON);
 	if (PP_LOCAT(block) == MDSS_PP_SSPP_CFG) {
 		i = MDSS_PP_ARG_MASK & block;
@@ -3724,18 +3705,6 @@ int mdss_mdp_hist_stop(u32 block)
 				goto hist_stop_clk;
 		}
 	} else if (PP_LOCAT(block) == MDSS_PP_DSPP_CFG) {
-/*  
-		for (i = 0; i < mixer_cnt; i++) {
-			dspp_num = mixer_id[i];
-			if (dspp_num >= mdata->ndspp) {
-				ret = -EINVAL;
-				pr_warn("Invalid dspp num %d\n", dspp_num);
-				goto hist_stop_clk;
-			}
-
-			hist_info = &mdss_pp_res->dspp_hist[dspp_num];
-*///qualcomm provide patch in 2015-07-03
-	
 /********************************************************/
 			if ((PP_BLOCK(block) < MDP_LOGICAL_BLOCK_DISP_0) ||
 					(PP_BLOCK(block) >= MDP_BLOCK_MAX)) {
@@ -3758,15 +3727,12 @@ int mdss_mdp_hist_stop(u32 block)
 
 			if (ret)
 				goto hist_stop_clk;
-		//	mdss_pp_res->pp_disp_flags[disp_num] |=
-		//					PP_FLAGS_DIRTY_HIST_COL;     //qualcomm provide patch in 2015-07-03
 		    mdss_pp_res->pp_disp_flags[i] |=
             				PP_FLAGS_DIRTY_HIST_COL;
 		}
 	}
 hist_stop_clk:
 	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF);
-//hist_stop_exit:     //qualcomm provide patch in 2015-07-03
 	return ret;
 }
 
@@ -4997,9 +4963,11 @@ static int mdss_mdp_ad_setup(struct msm_fb_data_type *mfd)
 	int ret = 0;
 	struct mdss_ad_info *ad;
 	struct mdss_mdp_ctl *ctl = mfd_to_ctl(mfd);
+	struct mdss_mdp_ctl *sctl = mdss_mdp_get_split_ctl(ctl);
 	struct msm_fb_data_type *bl_mfd;
 	struct mdss_data_type *mdata;
 	u32 bypass = MDSS_PP_AD_BYPASS_DEF, bl;
+	u32 width;
 
 	ret = mdss_mdp_get_ad(mfd, &ad);
 	if (ret) {
@@ -5075,15 +5043,18 @@ static int mdss_mdp_ad_setup(struct msm_fb_data_type *mfd)
 		}
 	}
 
+	width = ctl->width;
+	if (sctl)
+		width += sctl->width;
+
 	/* update ad screen size if it has changed since last configuration */
-	if (mfd->panel_info->type == WRITEBACK_PANEL &&
-		(ad->init.frame_w != ctl->width ||
-			ad->init.frame_h != ctl->height)) {
+	if ((ad->init.frame_w != width) ||
+			(ad->init.frame_h != ctl->height)) {
 		pr_debug("changing from %dx%d to %dx%d\n", ad->init.frame_w,
 							ad->init.frame_h,
-							ctl->width,
+							width,
 							ctl->height);
-		ad->init.frame_w = ctl->width;
+		ad->init.frame_w = width;
 		ad->init.frame_h = ctl->height;
 		ad->reg_sts |= PP_AD_STS_DIRTY_INIT;
 	}
@@ -5183,6 +5154,7 @@ static void pp_ad_calc_worker(struct work_struct *work)
 	base = mdata->ad_off[ad->calc_hw_num].base;
 
 	if ((ad->cfg.mode == MDSS_AD_MODE_AUTO_STR) && (ad->last_bl == 0)) {
+		complete(&ad->comp);
 		mutex_unlock(&ad->lock);
 		return;
 	}
@@ -5726,6 +5698,9 @@ int mdss_mdp_calib_mode(struct msm_fb_data_type *mfd,
 		return -EINVAL;
 	mutex_lock(&mdss_pp_mutex);
 	mfd->calib_mode = cfg->calib_mask;
+	mutex_lock(&mfd->bl_lock);
+	mfd->calib_mode_bl = mfd->bl_level;
+	mutex_unlock(&mfd->bl_lock);
 	mutex_unlock(&mdss_pp_mutex);
 	return 0;
 }

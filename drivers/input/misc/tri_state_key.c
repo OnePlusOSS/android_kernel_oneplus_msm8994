@@ -401,7 +401,7 @@ static int tristate_dev_probe(struct platform_device *pdev)
         
         init_timer(&switch_data->s_timer);
         switch_data->s_timer.function = &timer_handle;
-        switch_data->s_timer.expires = jiffies + 20*HZ;
+        switch_data->s_timer.expires = jiffies + 2*HZ;
   
         add_timer(&switch_data->s_timer);
 

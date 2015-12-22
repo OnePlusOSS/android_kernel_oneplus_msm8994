@@ -1,5 +1,5 @@
 /*
- *	
+ *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2 as
  *  published by the Free Software Foundation.
@@ -33,12 +33,13 @@
 #include <linux/seq_file.h>
 #include "../../../fs/proc/internal.h"
 
+#include <linux/wakelock.h>
 
 //#include <linux/irq.h>
 #define DRV_NAME	"switch-theme"
 /*
 * HW SCHEMATIC
-*         Cover |   Phone  
+*         Cover |   Phone
 *               |
 *          -----|----R2(2K Ohm)------[3.3 V
 *          |    |
@@ -48,7 +49,7 @@
 *               |       |
 *               |       |
 *               |       R3(51K ohm)
-*               |       | 
+*               |       |
 *               |       = GND
 */
 
@@ -101,11 +102,12 @@ struct switch_theme_data {
 
 	struct regulator *vdd_io;
 	bool power_enabled;
-	
+
 	struct work_struct work;
 	struct switch_dev sdev;
 	struct device *dev;
 	//struct input_dev *input;
+	struct wake_lock cover_wl;
 
 	struct pinctrl * key_pinctrl;
 	struct pinctrl_state * set_state;
@@ -158,7 +160,7 @@ int cover_switch_regulator_set(bool enable)
 				error);
 			goto out_err;
 		}
-		
+
 	} else {
 		dev_dbg(switch_data->dev, "%s off\n", __func__);
 
@@ -235,7 +237,7 @@ static ssize_t cover_switch_enable_write(struct file *file, const char __user *b
 		return -EFAULT;
 	}
 
-	if (copy_from_user(&cover_switch, buffer, sizeof(cover_switch))) 
+	if (copy_from_user(&cover_switch, buffer, sizeof(cover_switch)))
 		return -EFAULT;
 
     printk("cover_switch_enable %d change to %d\n",switch_data->switch_enable,cover_switch);
@@ -281,7 +283,7 @@ static ssize_t cover_type_write(struct file *file, const char __user *buffer, si
 		return -EFAULT;
 	}
     /*
-	if (copy_from_user(&cover_switch, buffer, sizeof(cover_switch))) 
+	if (copy_from_user(&cover_switch, buffer, sizeof(cover_switch)))
 		return -EFAULT;
     */
     sscanf(buffer, "%d", &state);
@@ -326,7 +328,7 @@ static const struct file_operations ADC_proc_fops = {
 	//.write		= ADC_write,
 };
 
-//#define Test //use gpio34(fingerprint key' gpio) for test,cause now we have no hardware 
+//#define Test //use gpio34(fingerprint key' gpio) for test,cause now we have no hardware
 
 #ifdef Test //changhua add for test uevent
 
@@ -345,8 +347,10 @@ irqreturn_t cover_switch_interrupt(int irq, void *_dev)
 //static int voltage_tbl [] = {2840,2570,2310,2060,1790,1450,1110,860,590,290};
 static int voltage_tbl [] = {2769,2388,2003,1635,1360,983,626,383};
 static DEFINE_MUTEX(mLock);
+#define COVER_WAKELOCK_HOLD_TIME 1000
 irqreturn_t cover_switch_interrupt(int irq, void *_dev)
 {
+    wake_lock_timeout(&switch_data->cover_wl, msecs_to_jiffies(COVER_WAKELOCK_HOLD_TIME));
 	//if (!gpio_get_value(switch_data->irq_gpio)) {//triger_falling
 	    schedule_work(&switch_data->work);
 		//return IRQ_HANDLED;
@@ -379,7 +383,7 @@ static void cover_switch_work(struct work_struct *work)
     mdelay(100);//wait for ADC stable
     //read adc
     //Read the VADC channel using the QPNP-ADC-API.
-    err = qpnp_vadc_read(switch_data->vadc_dev, P_MUX4_1_3, &result); //Read the MPP4 VADC channel with 1:3 scaling 
+    err = qpnp_vadc_read(switch_data->vadc_dev, P_MUX4_1_3, &result); //Read the MPP4 VADC channel with 1:3 scaling
     if (err) {
 		printk("%s,Unable to read cover adc, rc=%d\n",__func__,err);
 
@@ -415,18 +419,18 @@ static void cover_switch_work(struct work_struct *work)
 
     //switch to INT channel after read adc to detect next changing of cover
     if(gpio_is_valid(switch_data->cover_switch_gpio))
-        gpio_direction_output(switch_data->cover_switch_gpio,0);//switch to INT 
+        gpio_direction_output(switch_data->cover_switch_gpio,0);//switch to INT
     mdelay(1);
     err = request_irq(switch_data->irq, cover_switch_interrupt,
 			IRQF_TRIGGER_FALLING|IRQF_TRIGGER_RISING, "covor_switch", switch_data);
-	//to check whether cover is leave when we check type done,cause we have disable irq,so when cover leave here will not have interrupt to tell us	
+	//to check whether cover is leave when we check type done,cause we have disable irq,so when cover leave here will not have interrupt to tell us
 	if (gpio_get_value(switch_data->irq_gpio))
 	{
 	    switch_data->cover_type = COVER_TYPE_UNKNOWN;
 	    printk("%s,cover is leave when we check type,cover_type(%d) --->(%d)\n",__func__,switch_data->last_type,switch_data->cover_type);
 	    switch_data->last_type = switch_data->cover_type;
     	switch_set_state(&switch_data->sdev, switch_data->cover_type);
-	}		
+	}
 	printk("%s OK\n",__func__);
 	mutex_unlock(&mLock);
 }
@@ -453,18 +457,18 @@ static int switch_theme_get_devtree_pdata(struct device *dev)
 	if (!node)
 		return -EINVAL;
 
-printk("%s, node name:%s  , %s\n",__func__,node->name,node->full_name);		
+printk("%s, node name:%s  , %s\n",__func__,node->name,node->full_name);
 	switch_data->irq_gpio= of_get_named_gpio(node, "cover,gpio_irq", 0);
 	if ((!gpio_is_valid(switch_data->irq_gpio)))
 		return -EINVAL;
-		
+
 printk("%s, irq gpio:%d \n", __func__, switch_data->irq_gpio);
 
 	switch_data->cover_switch_gpio= of_get_named_gpio(node, "cover,gpio_switch", 0);
 	if ((!gpio_is_valid(switch_data->cover_switch_gpio)))
 		return -EINVAL;
 printk("%s, switch gpio:%d \n", __func__, switch_data->cover_switch_gpio);
-	return 0;	
+	return 0;
 }
 
 static struct of_device_id switch_theme_of_match[] = {
@@ -485,16 +489,16 @@ switch_theme_get_devtree_pdata(struct device *dev)
 static int switch_theme_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-    
+
 	int error=0;
-	
+
 printk("%s\n",__func__);
 
         switch_data = kzalloc(sizeof(struct switch_theme_data), GFP_KERNEL);
         switch_data->dev = dev;
         switch_data->last_type = COVER_TYPE_UNKNOWN;
 
-        
+
         /* early for VADC get, defer probe if needed */
 	    switch_data->vadc_dev = qpnp_get_vadc(dev, "cover");
     	if (IS_ERR(switch_data->vadc_dev)) {
@@ -544,28 +548,28 @@ printk("%s\n",__func__);
 		        dev_err(switch_data->dev, "Failed to get pinctrl \n");
 		        goto err_switch_dev_register;
 	     }
-         switch_data->set_state =pinctrl_lookup_state(switch_data->key_pinctrl,"cover_int_active"); 
+         switch_data->set_state =pinctrl_lookup_state(switch_data->key_pinctrl,"cover_int_active");
          if (IS_ERR_OR_NULL(switch_data->set_state)) {
 		        dev_err(switch_data->dev, "Failed to lookup_state \n");
 		        goto err_switch_dev_register;
 	     }
 	     pinctrl_select_state(switch_data->key_pinctrl, switch_data->set_state);
-	     
+
         //config cover_switch gpio(pm8994 gpio01) to output low to switch to INT_R,not ADC(pm8994 mpp04)
-        	error = gpio_request(switch_data->cover_switch_gpio,"cover_switch-ADC-INT");        
+            error = gpio_request(switch_data->cover_switch_gpio,"cover_switch-ADC-INT");
         	if(error < 0)
         	{
         		printk(KERN_ERR "%s: gpio_request, err=%d", __func__, error);
         		goto err_switch_dev_register;
-        		
+
         	}
         	error = gpio_direction_output(switch_data->cover_switch_gpio,0);
         	if(error < 0)
         	{
         		printk(KERN_ERR "%s: gpio_direction_output, err=%d", __func__, error);
         		return error;
-        		
-        	}         
+
+            }
 
        //config irq gpio and request irq
 	   switch_data->irq = gpio_to_irq(switch_data->irq_gpio);
@@ -576,7 +580,7 @@ printk("%s\n",__func__);
        }
        else
        {
-        	error = gpio_request(switch_data->irq_gpio,"switch_theme-int");        
+            error = gpio_request(switch_data->irq_gpio,"switch_theme-int");
         	if(error < 0)
         	{
         		printk(KERN_ERR "%s: gpio_request, err=%d", __func__, error);
@@ -608,6 +612,9 @@ printk("%s\n",__func__);
             }
        }
        enable_irq_wake(switch_data->irq);
+       wake_lock_init(&switch_data->cover_wl, WAKE_LOCK_SUSPEND, "cover_switch_wl");
+       device_init_wakeup(switch_data->dev, 1);
+
        if (!proc_create_data("cover_type", 0660, NULL, &cover_type_proc_fops, switch_data)) {
     		error = -ENOMEM;
     		goto err_request_irq;

@@ -116,7 +116,7 @@ struct msm8994_asoc_mach_data {
 	struct msm_pinctrl_info pinctrl_info;
 	void __iomem *pri_mux;
 	void __iomem *sec_mux;
-#ifdef VENDOR_EDIT		
+#ifdef VENDOR_EDIT
  /* Modified begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11 */
 	void __iomem *qua_mux;
 #endif
@@ -143,7 +143,7 @@ static int hdmi_rx_sample_rate = SAMPLING_RATE_48KHZ;
 static int msm_pri_mi2s_tx_ch = 2;
 
 
-#ifdef VENDOR_EDIT		
+#ifdef VENDOR_EDIT
  /* Modified begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
 //#define MSM_TERT_MI2S_MASTER
 #define MSM_QUAT_MI2S_MASTER
@@ -1403,7 +1403,7 @@ static int msm_set_pinctrl(struct msm_pinctrl_info *pinctrl_info,
 
 	switch (pinctrl_info->curr_state) {
 
-#ifdef VENDOR_EDIT		
+#ifdef VENDOR_EDIT
 	 /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
 		case STATE_QUA_MI2S_SLEEP:
 			ret = pinctrl_select_state(pinctrl_info->pinctrl,
@@ -1425,7 +1425,7 @@ static int msm_set_pinctrl(struct msm_pinctrl_info *pinctrl_info,
 			goto err;
 		}
 			break;			
- /* add end by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */	
+ /* add end by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
  #endif
 	case STATE_AUXPCM_ACTIVE:
 		ret = pinctrl_select_state(pinctrl_info->pinctrl,
@@ -1491,7 +1491,7 @@ static int msm_reset_pinctrl(struct msm_pinctrl_info *pinctrl_info,
 	}
 
 	switch (pinctrl_info->curr_state) {
-#ifdef VENDOR_EDIT				
+#ifdef VENDOR_EDIT
  /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
 	case STATE_QUA_MI2S_SLEEP:
 		ret = pinctrl_select_state(pinctrl_info->pinctrl,
@@ -1565,11 +1565,11 @@ static void msm_release_pinctrl(struct platform_device *pdev)
 	if (pinctrl_info) {
 		iounmap(pdata->pri_mux);
 		iounmap(pdata->sec_mux);
-#ifdef VENDOR_EDIT				
+#ifdef VENDOR_EDIT
 /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
 			iounmap(pdata->qua_mux);
-/* add end by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */		
-#endif 
+/* add end by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
+#endif
 		devm_pinctrl_put(pinctrl_info->pinctrl);
 		pinctrl_info->pinctrl = NULL;
 	}
@@ -1624,7 +1624,7 @@ static int msm_get_pinctrl(struct platform_device *pdev)
 			__func__);
 		goto err;
 	}
-#ifdef VENDOR_EDIT			
+#ifdef VENDOR_EDIT
  /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
 		pinctrl_info->qua_mi2s_sleep = pinctrl_lookup_state(pinctrl,
 							"quat_mi2s_sleep");
@@ -1682,8 +1682,8 @@ static int msm_get_pinctrl(struct platform_device *pdev)
 		goto err;
 	}
 	
-#ifdef VENDOR_EDIT			
- /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */ 
+#ifdef VENDOR_EDIT
+ /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
 		muxsel = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 							"lpaif_quat_mode_muxsel");
 		if (!muxsel) {
@@ -1699,7 +1699,7 @@ static int msm_get_pinctrl(struct platform_device *pdev)
 		}
  /* add end by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
  #endif
- 
+
 	return 0;
 
 err:
@@ -1711,7 +1711,7 @@ err:
 }
 
 
-#ifndef VENDOR_EDIT		
+#ifndef VENDOR_EDIT
   /* modified begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,changed for I2S PA */
  static int msm8994_mi2s_snd_startup(struct snd_pcm_substream *substream)
  {
@@ -1881,7 +1881,7 @@ static void msm8994_pri_mi2s_snd_shutdown(struct snd_pcm_substream *substream)
 #endif
 
 
-#ifdef VENDOR_EDIT		
+#ifdef VENDOR_EDIT
 /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable quat i2s */
 static int quat_mi2s_sample_rate_get(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
@@ -2152,7 +2152,7 @@ static int msm_tx_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 	return 0;
 }
 
-#ifdef VENDOR_EDIT		
+#ifdef VENDOR_EDIT
  /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
 static int msm_rx_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 				struct snd_pcm_hw_params *params)
@@ -2193,7 +2193,7 @@ static int msm_be_quat_mi2s_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 
 
 static struct snd_soc_ops msm8994_mi2s_be_ops = {
-#ifndef VENDOR_EDIT		
+#ifndef VENDOR_EDIT
  .startup = msm8994_mi2s_snd_startup,
  .shutdown = msm8994_mi2s_snd_shutdown,
 #else
@@ -2204,7 +2204,7 @@ static struct snd_soc_ops msm8994_mi2s_be_ops = {
 #endif
 };
 
-#ifdef VENDOR_EDIT		
+#ifdef VENDOR_EDIT
 /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
 static struct snd_soc_ops msm8994_qua_mi2s_be_ops = {
 	.startup =msm8994_quat_mi2s_snd_startup,
@@ -2362,7 +2362,7 @@ static const struct snd_kcontrol_new msm_snd_controls[] = {
 			slim0_tx_bit_format_get, slim0_tx_bit_format_put),
 	SOC_ENUM_EXT("SLIM_0_TX SampleRate", msm_snd_enum[5],
 			slim0_tx_sample_rate_get, slim0_tx_sample_rate_put),
-#ifdef VENDOR_EDIT					
+#ifdef VENDOR_EDIT
  /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable quat i2s */
 	SOC_ENUM_EXT("PRI_MI2S BitWidth", msm_snd_enum[4],
 			pri_mi2s_bit_format_get, pri_mi2s_bit_format_put),
@@ -3624,8 +3624,9 @@ static struct snd_soc_dai_link msm8994_common_dai_links[] = {
 		.codec_dai_name = "tomtom_mad1",
 		.codec_name = "tomtom_codec",
 	},
-	
-#ifdef VENDOR_EDIT			
+
+
+#ifdef VENDOR_EDIT
  /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable quat i2s */
 	{
 				.name = "Primary MI2S RX_Hostless",
@@ -3675,7 +3676,22 @@ static struct snd_soc_dai_link msm8994_common_dai_links[] = {
 	},
  /* add end by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
 #endif
-				
+
+	{
+		.name = "MultiMedia3 Record",
+		.stream_name = "MultiMedia3 Capture",
+		.cpu_dai_name = "MultiMedia3",
+		.platform_name = "msm-pcm-dsp.0",
+		.dynamic = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			    SND_SOC_DPCM_TRIGGER_POST},
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.ignore_suspend = 1,
+		.ignore_pmdown_time = 1,
+		.be_id = MSM_FRONTEND_DAI_MULTIMEDIA3,
+	},
+
 	/* End of FE DAI LINK */
 	/* Backend FM DAI Links */
 	{
@@ -3969,7 +3985,7 @@ static struct snd_soc_dai_link msm8994_common_dai_links[] = {
 		.ignore_suspend = 1,
 	},
 
-#ifdef VENDOR_EDIT					
+#ifdef VENDOR_EDIT
  /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
 		{
 		.name = LPASS_BE_PRI_MI2S_RX,
@@ -4322,7 +4338,7 @@ static int msm8994_asoc_machine_probe(struct platform_device *pdev)
 		dev_info(&pdev->dev, "msm8994_prepare_us_euro failed (%d)\n",
 			ret);
 
-#ifdef VENDOR_EDIT			
+#ifdef VENDOR_EDIT
  /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
 	atomic_set(&pri_mi2s_rsc_ref, 0);
 	atomic_set(&quat_mi2s_rsc_ref, 0);
