@@ -1324,7 +1324,7 @@ static int fg_soc_calibrate(struct fg_chip *di, int soc)
 
 				if(soc - di->soc_pre > 0) {
 				di->saltate_counter++;
-				if((di->saltate_counter < CAPACITY_SALTATE_COUNTER) ||(time_last < CAPACITY_CALIBRATE_TIME_60_PERCENT))
+				if(di->saltate_counter < CAPACITY_SALTATE_COUNTER)
 					return di->soc_pre;
 				else
 					di->saltate_counter = 0;
@@ -5428,8 +5428,8 @@ static int fg_resume(struct device *dev)
 	if((suspend_last_time >= ONE_MIN) && (chip->soc_pre - soc) >= 1) //sleep time > 1min,calibrate soc set to fg real soc
 		{
 		pr_err("chip->soc_pre=%d,soc=%d,suspend_last_time=%ld\n",chip->soc_pre,soc,suspend_last_time);
-	     chip->soc_pre = soc;
-		 backup_soc_ex(soc);
+	     chip->soc_pre -= 1;
+		 backup_soc_ex(chip->soc_pre);
 		}
 #endif
 

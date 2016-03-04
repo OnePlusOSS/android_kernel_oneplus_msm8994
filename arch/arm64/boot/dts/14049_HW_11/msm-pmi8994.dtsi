@@ -206,7 +206,7 @@
 			#size-cells = <1>;
 
 			qcom,iterm-ma = <150>;
-			qcom,fastchg-current-ma = <1910>;
+			qcom,fastchg-current-ma = <500>;
 			qcom,float-voltage-mv = <4320>;
 			qcom,resume-delta-mv = <100>;
             //            qcom,chg-inhibit-en;

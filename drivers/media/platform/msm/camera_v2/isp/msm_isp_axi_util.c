@@ -2048,7 +2048,7 @@ int msm_isp_cfg_axi_stream(struct vfe_device *vfe_dev, void *arg)
 		   vfe_dev, stream_cfg_cmd, camif_update);
 	} else {
 		rc = msm_isp_stop_axi_stream(
-		   vfe_dev, stream_cfg_cmd, /*camif_update*/DISABLE_CAMIF_IMMEDIATELY); //0825 Wesley add for axi wait
+		   vfe_dev, stream_cfg_cmd, camif_update);
 
 		msm_isp_axi_update_cgc_override(vfe_dev, stream_cfg_cmd, 0);
 	}

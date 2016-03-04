@@ -549,7 +549,10 @@ int msm_sensor_match_id(struct msm_sensor_ctrl_t *s_ctrl)
 			sensor_name);
 		return -EINVAL;
 	}
-
+	#ifdef VENDOR_EDIT
+	//liuyan 2016/2/1 add, switch wechat video talk and camera
+    msleep(5);
+    #endif
 	rc = sensor_i2c_client->i2c_func_tbl->i2c_read(
 		sensor_i2c_client, slave_info->sensor_id_reg_addr,
 		&chipid, MSM_CAMERA_I2C_WORD_DATA);
