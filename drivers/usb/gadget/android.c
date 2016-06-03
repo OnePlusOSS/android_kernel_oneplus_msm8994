@@ -659,9 +659,27 @@ static int functionfs_ready_callback(struct ffs_data *ffs)
 	/* Save dev in case the adb function will get disabled */
 	config->dev = dev;
 
+#ifndef VENDOR_EDIT//add by jiachenghui for usb fail after rndis click some times, 2015-11-11
 	if (config->enabled)
 		android_enable(dev);
 
+//add by jiachenghui for usb fail after rndis click some times, 2015-11-11
+#else
+	if (config->enabled){
+		ret = android_enable(dev);
+              if (ret) {
+			pr_err("%s: failed to enable android, err:%d\n", __func__,ret);
+			functionfs_unbind(ffs);
+			config->dev = NULL;
+	              config->opened = false;
+	              config->data = NULL;
+			if (dev)
+			     mutex_unlock(&dev->mutex);
+			return ret;
+		}
+	}
+#endif
+//end add by jiachenghui for usb fail after rndis click some times, 2015-11-11
 	mutex_unlock(&dev->mutex);
 
 	return 0;
@@ -2435,9 +2453,15 @@ static int mass_storage_function_init(struct android_usb_function *f,
 		return -ENOMEM;
 	}
 
+#ifndef VENDOR_EDIT//add by jiachenghui for USB VID customized & cdrom,2015-11-11
 	config->fsg.nluns = 1;
 	snprintf(name[0], MAX_LUN_NAME, "lun");
 	config->fsg.luns[0].removable = 1;
+//add by jiachenghui for USB VID customized & cdrom,2015-11-11
+#else
+	config->fsg.nluns = 0;
+#endif
+//add by jiachenghui for USB VID customized & cdrom,2015-11-11
 
 	if (dev->pdata && dev->pdata->cdrom) {
 		config->fsg.luns[config->fsg.nluns].cdrom = 1;

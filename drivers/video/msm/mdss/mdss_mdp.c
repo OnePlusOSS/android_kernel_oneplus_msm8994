@@ -1228,8 +1228,11 @@ int mdss_iommu_init(struct mdss_data_type *mdata)
 
 	return 0;
 }
-
+#ifndef VENDOR_EDIT
 static void mdss_debug_enable_clock(int on)
+#else
+void mdss_debug_enable_clock(int on)
+#endif
 {
 	if (on)
 		mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON);
@@ -1382,6 +1385,10 @@ void mdss_hw_init(struct mdss_data_type *mdata)
 		/* swap */
 		writel_relaxed(1, offset + 16);
 	}
+
+	/* initialize csc matrix default value */
+	for (i = 0; i < mdata->nvig_pipes; i++)
+		vig[i].csc_coeff_set = MDSS_MDP_CSC_YUV2RGB_709L;
 
 	mdata->nmax_concurrent_ad_hw =
 		(mdata->mdp_rev < MDSS_MDP_HW_REV_103) ? 1 : 2;

@@ -78,6 +78,10 @@ enum msm_camera_i2c_data_type {
 	MSM_CAMERA_I2C_SET_WORD_MASK,
 	MSM_CAMERA_I2C_UNSET_WORD_MASK,
 	MSM_CAMERA_I2C_SET_BYTE_WRITE_MASK_DATA,
+//	#ifdef VENDOR_EDIT
+    //added by zhangxiaowei@camera 20150310 for qcom OIS architecture
+	MSM_CAMERA_I2C_NO_DATA,
+   // #endif /*VENDOR_EDIT*/
 	MSM_CAMERA_I2C_DATA_TYPE_MAX,
 };
 
@@ -185,6 +189,14 @@ struct msm_sensor_power_setting_array {
 	struct msm_sensor_power_setting  power_down_setting_a[MAX_POWER_CONFIG];
 	struct msm_sensor_power_setting *power_down_setting;
 	unsigned short size_down;
+};
+
+
+struct msm_sensor_i2c_sync_params {
+	unsigned int cid;
+	int csid;
+	unsigned short line;
+	unsigned short delay;
 };
 
 struct msm_sensor_init_params {

@@ -139,6 +139,9 @@ static ssize_t power_supply_store_property(struct device *dev,
 static struct device_attribute power_supply_attrs[] = {
 	/* Properties of type `int' */
 	POWER_SUPPLY_ATTR(status),
+#ifdef VENDOR_EDIT
+	POWER_SUPPLY_ATTR(chg_protect_status),
+#endif
 	POWER_SUPPLY_ATTR(charge_type),
 	POWER_SUPPLY_ATTR(health),
 	POWER_SUPPLY_ATTR(present),

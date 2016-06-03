@@ -617,7 +617,19 @@ config TI_DRV2667
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called ti_drv2667.
+#ifdef VENDOR_EDIT
+#shankai@bsp, 2015/2/2, Add for :drv2605 kernel support 
+config TI_DRV2605
+	tristate "TI's DRV2605 haptic controller support"
+	depends on I2C
+	help
+	  The DRV2605 is a piezo haptic controller chip. It can drive
+	  piezo haptics either in digital mode or analog mode. This chip
+	  can be used in variety of devices to provide haptic support.
 
+	  To compile this driver as a module, choose M here: the
+	  module will be called ti_drv2605.
+#endif VENDOR_EDIT
 config QCOM_LIQUID_DOCK
 	tristate "QTI LiQUID Docking Station USB/Ethernet support"
 	depends on OF_GPIO

@@ -37,7 +37,12 @@
 #define WCD9330_DMIC_CLK_DIV_6 0x03
 #define WCD9330_DMIC_CLK_DIV_16 0x04
 
+#ifndef VENDOR_EDIT
+/*zhiguang.su@MultiMedia.AudioDrv, 2016-01-23, remove unused function*/
 #define TOMTOM_ZDET_SUPPORTED true
+#else
+#define TOMTOM_ZDET_SUPPORTED false
+#endif
 
 #define WCD9330_SPKDRV_OCP_CURR_LIMIT_I_0P0_A	0x0
 #define WCD9330_SPKDRV_OCP_CURR_LIMIT_I_0P375_A 0x1

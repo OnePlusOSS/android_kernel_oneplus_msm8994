@@ -35,6 +35,7 @@
 #include <linux/kernel.h>
 #include <linux/gpio.h>
 #include <linux/input.h>
+#include <sound/sounddebug.h>
 #include "wcd9320.h"
 #include "wcd9306.h"
 #include "wcd9xxx-mbhc.h"
@@ -106,7 +107,12 @@
  * Invalid voltage range for the detection
  * of plug type with current source
  */
+#ifndef VENDOR_EDIT
+//zhiguang.su@MultiMedia.AudioDrv, for LaKaLa detect,2016-1-5
 #define WCD9XXX_CS_MEAS_INVALD_RANGE_LOW_MV 160
+#else
+#define WCD9XXX_CS_MEAS_INVALD_RANGE_LOW_MV 210
+#endif
 #define WCD9XXX_CS_MEAS_INVALD_RANGE_HIGH_MV 265
 
 /*
@@ -126,8 +132,22 @@
 /* RX_HPH_CNP_WG_TIME increases by 0.24ms */
 #define WCD9XXX_WG_TIME_FACTOR_US	240
 
+#ifdef VENDOR_EDIT
+// Modified begin by MingLiu@MultiMedia.AudioDrv for headset detect on 2014-10-17
+
 #define WCD9XXX_V_CS_HS_MAX 500
+
+#else /* VENDOR_EDIT */
+#define WCD9XXX_V_CS_HS_MAX 1000
+// Modified end by MingLiu@MultiMedia.AudioDrv for headset detect on 2014-10-17
+#endif /* VENDOR_EDIT */
+#ifdef VENDOR_EDIT
+/*wangdongdong@MultiMedia.AudioDrv,2015/06/04,add for headset detect*/
+/*kang change from 20 to 15 for supporting lenove U.S./CTIA headset*/
+#define WCD9XXX_V_CS_NO_MIC 15
+#else
 #define WCD9XXX_V_CS_NO_MIC 5
+#endif
 #define WCD9XXX_MB_MEAS_DELTA_MAX_MV 80
 #define WCD9XXX_CS_MEAS_DELTA_MAX_MV 12
 
@@ -879,6 +899,10 @@ static void wcd9xxx_report_plug(struct wcd9xxx_mbhc *mbhc, int insertion,
 		mbhc->hph_type = MBHC_HPH_NONE;
 		pr_debug("%s: Reporting removal %d(%x)\n", __func__,
 			 jack_type, mbhc->hph_status);
+		#ifdef VENDOR_EDIT
+			 /*wangdongdong@MultiMedia.AudioDrv, 2015-03-24, Modify for headset uevent*/
+                    switch_set_state(&mbhc->wcd9xxx_sdev,0);
+	        #endif
 		wcd9xxx_jack_report(mbhc, &mbhc->headset_jack, mbhc->hph_status,
 				    WCD9XXX_JACK_MASK);
 		wcd9xxx_set_and_turnoff_hph_padac(mbhc);
@@ -952,6 +976,31 @@ static void wcd9xxx_report_plug(struct wcd9xxx_mbhc *mbhc, int insertion,
 
 		pr_debug("%s: Reporting insertion %d(%x)\n", __func__,
 			 jack_type, mbhc->hph_status);
+	#ifdef VENDOR_EDIT
+    /*wangdongdong@MultiMedia.AudioDrv, 2015-03-24, Modify for headset uevent*/
+              switch(mbhc->current_plug){
+               case PLUG_TYPE_HEADPHONE:
+		       case PLUG_TYPE_HIGH_HPH:
+                    mbhc->mbhc_cfg->headset_type = 0;
+			        switch_set_state(&mbhc->wcd9xxx_sdev,2);
+			        break;
+	           case PLUG_TYPE_GND_MIC_SWAP:
+			        mbhc->mbhc_cfg->headset_type = 0;
+			        switch_set_state(&mbhc->wcd9xxx_sdev,1);
+			        break;
+		       case PLUG_TYPE_HEADSET:
+		            mbhc->mbhc_cfg->headset_type = 1;
+		 	        switch_set_state(&mbhc->wcd9xxx_sdev,1);
+			        break;
+		        default:
+                    mbhc->mbhc_cfg->headset_type = 0;
+			        switch_set_state(&mbhc->wcd9xxx_sdev,0);
+			    break;
+		      }
+              printk("%s: Reporting insertion %d(%x)\n", __func__,
+			 jack_type, mbhc->hph_status);
+	      
+	#endif
 		wcd9xxx_jack_report(mbhc, &mbhc->headset_jack,
 				    mbhc->hph_status, WCD9XXX_JACK_MASK);
 		/*
@@ -1901,12 +1950,19 @@ wcd9xxx_codec_cs_get_plug_type(struct wcd9xxx_mbhc *mbhc, bool highhph)
 			wcd9xxx_turn_onoff_current_source(mbhc,
 							  &mbhc->mbhc_bias_regs,
 							  false, false);
-
+#ifdef VENDOR_EDIT
+/*zhiguang.su@MultiMedia.AudioDrv, 2016-01-19, let the voltage go stable,to fix some pay tools can not recognized as headset*/
+msleep(1);
+#endif
 		rt[i].dce = __wcd9xxx_codec_sta_dce(mbhc, 1, !highhph, true);
 		if (rt[i].mic_bias)
 			wcd9xxx_turn_onoff_current_source(mbhc,
 							  &mbhc->mbhc_bias_regs,
 							  true, false);
+#ifdef VENDOR_EDIT
+/*zhiguang.su@MultiMedia.AudioDrv, 2016-01-19, let the voltage go stable,to fix some pay tools can not recognized as headset*/
+msleep(1);
+#endif
 		if (rt[i].swap_gnd)
 			wcd9xxx_codec_hphr_gnd_switch(codec, false);
 	}
@@ -1979,6 +2035,10 @@ wcd9xxx_codec_get_plug_type(struct wcd9xxx_mbhc *mbhc, bool highhph)
 			wcd9xxx_codec_hphr_gnd_switch(codec, true);
 		if (rt[i].vddio)
 			wcd9xxx_onoff_vddio_switch(mbhc, true);
+#ifdef VENDOR_EDIT
+/*zhiguang.su@MultiMedia.AudioDrv, 2016-01-19, let the voltage go stable,to fix some pay tools can not recognized as headset*/
+msleep(1);
+#endif
 		/*
 		 * Pull down micbias to detect headset with mic which has
 		 * threshold and to have more consistent voltage measurements.
@@ -1988,9 +2048,17 @@ wcd9xxx_codec_get_plug_type(struct wcd9xxx_mbhc *mbhc, bool highhph)
 		 */
 		(void) wcd9xxx_pull_down_micbias(mbhc,
 					    WCD9XXX_MICBIAS_PULLDOWN_SETTLE_US);
+#ifdef VENDOR_EDIT
+/*zhiguang.su@MultiMedia.AudioDrv, 2016-01-19, let the voltage go stable,to fix some pay tools can not recognized as headset*/
+msleep(1);
+#endif
 		rt[i].dce = __wcd9xxx_codec_sta_dce(mbhc, 1, true, true);
 		if (rt[i].vddio)
 			wcd9xxx_onoff_vddio_switch(mbhc, false);
+#ifdef VENDOR_EDIT
+/*zhiguang.su@MultiMedia.AudioDrv, 2016-01-19, let the voltage go stable,to fix some pay tools can not recognized as headset*/
+msleep(1);
+#endif
 		if (rt[i].swap_gnd)
 			wcd9xxx_codec_hphr_gnd_switch(codec, false);
 	}
@@ -3184,8 +3252,13 @@ static void wcd9xxx_correct_swch_plug(struct work_struct *work)
 		/* can race with removal interrupt */
 		WCD9XXX_BCL_LOCK(mbhc->resmgr);
 		if (current_source_enable)
-			plug_type = wcd9xxx_codec_cs_get_plug_type(mbhc,
+		#ifndef VENDOR_EDIT
+                /*wangdongdong@MultiMedia.AudioDrv,2015/05/27,modify for chinese headset detection*/	
+                        plug_type = wcd9xxx_codec_cs_get_plug_type(mbhc,
 								   highhph);
+                #else
+                        plug_type = wcd9xxx_codec_cs_get_plug_type(mbhc,true);
+                #endif
 		else
 			plug_type = wcd9xxx_codec_get_plug_type(mbhc, true);
 		WCD9XXX_BCL_UNLOCK(mbhc->resmgr);
@@ -5493,6 +5566,25 @@ int wcd9xxx_mbhc_init(struct wcd9xxx_mbhc *mbhc, struct wcd9xxx_resmgr *resmgr,
 				__func__);
 			return ret;
 		}
+
+#ifdef VENDOR_EDIT
+//Ming.Liu@MultiMedia.AudioDrv, 2015-03-02, Add for 1+ headphone line control
+		ret = snd_jack_set_key(mbhc->button_jack.jack,
+					SND_JACK_BTN_3, KEY_VOLUMEUP);
+		if (ret) {
+			pr_err("%s: Failed to set code for btn-3\n",
+				__func__);
+			return ret;
+		}
+
+		ret = snd_jack_set_key(mbhc->button_jack.jack,
+					SND_JACK_BTN_7, KEY_VOLUMEDOWN);
+		if (ret) {
+			pr_err("%s: Failed to set code for btn-7\n",
+				__func__);
+			return ret;
+		}
+#endif /* VENDOR_EDIT */
 
 		INIT_DELAYED_WORK(&mbhc->mbhc_firmware_dwork,
 				  wcd9xxx_mbhc_fw_read);

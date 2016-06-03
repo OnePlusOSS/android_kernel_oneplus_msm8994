@@ -407,7 +407,13 @@ struct i2c_msm_clk_div_fld {
  * divider values as per HW Designers
  */
 static struct i2c_msm_clk_div_fld i2c_msm_clk_div_map[] = {
+#ifndef VENDOR_EDIT //add by jiachenghui for DCDC I2C SCL duty cycle 2015-06-26
 	{KHz(100), 124, 62},
+//add by jiachenghui for DCDC I2C SCL duty cycle 2015-06-26
+#else
+       {KHz(100), 93, 0},//19200/(100*2)-3
+#endif //VENDOR_EDIT
+//end add by jiachenghui for DCDC I2C SCL duty cycle 2015-06-26
 	{KHz(400),  28, 14},
 	{KHz(1000),  8,  5},
 };

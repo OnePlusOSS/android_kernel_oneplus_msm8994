@@ -1963,6 +1963,11 @@ static int __init msm_serial_hsl_init(void)
 {
 	int ret;
 
+#ifdef VENDOR_EDIT
+	printk("msm_serial_hsl_init:%d\n",console_set_on_cmdline);
+	if(!console_set_on_cmdline)
+		return -EPERM;
+#endif
 	ret = uart_register_driver(&msm_hsl_uart_driver);
 	if (unlikely(ret))
 		return ret;

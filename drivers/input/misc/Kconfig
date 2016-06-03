@@ -863,5 +863,28 @@ config SENSORS_ISL29044A
 	help
 	 This option enables support for the INTERSIL ISL29044A P/L sensor.
 
+#VENDOR_EDIT changhua 2015-02-28 add for switch Profiles by triple state switch key
+config TRI_STATE_KEY
+	default n
+	tristate "switch Profiles by this triple key"
+	help
+	 Say Y here if you want to enable the feature.
+#add end 
+#changhua 2015-02-12 add for switch theme when change rare cover
+config SWITCH_THEME
+	default n
+	tristate "switch theme when change rare cover support by ADC"
+	help
+	 Say Y here if you want to enable the feature.
+#add end 
+
+#add for fpc1022 fingerprints
+config FINGERPRINT_FPC1022
+	default n
+	tristate "fpc fingerprint sensor support"
+	depends on SPI_MASTER
+#add end 
+
+
 endif
 

@@ -1,0 +1,10 @@
+#add by jiachenghui for support oem trace,2015/05/09
+
+config OEM_TRACE_SUPORT
+	default y
+	depends on OEM_DEBUG_SUPORT
+	bool "OEM debug function, enable it will register the device, which under /dev/otracer."
+
+config OEM_FORCE_DUMP
+	default y
+	bool "OEM force dump function, it will enable goto the force dump"

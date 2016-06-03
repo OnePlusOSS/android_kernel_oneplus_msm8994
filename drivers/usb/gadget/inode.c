@@ -1470,7 +1470,10 @@ gadgetfs_setup (struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 		if (0 == (u8) w_value) {
 			value = 0;
 			dev->current_config = 0;
+/* david.liu@oneplus.tw,20160325  Fix peformance of usb charging */
+#ifndef VENDOR_EDIT
 			usb_gadget_vbus_draw(gadget, 8 /* mA */ );
+#endif
 			// user mode expected to disable endpoints
 		} else {
 			u8	config, power;

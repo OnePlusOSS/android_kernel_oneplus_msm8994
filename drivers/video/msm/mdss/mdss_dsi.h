@@ -150,6 +150,10 @@ enum dsi_pm_type {
 #define DSI_CMD_DST_FORMAT_RGB565	6
 #define DSI_CMD_DST_FORMAT_RGB666	7
 #define DSI_CMD_DST_FORMAT_RGB888	8
+#ifdef VENDOR_EDIT  //qualcomm modify for lcd crash 2015-04-18
+
+#define DSI_INTR_DESJEW_MASK			BIT(31)
+#endif
 
 #define DSI_INTR_DESJEW_MASK			BIT(31)
 #define DSI_INTR_DYNAMIC_REFRESH_MASK		BIT(29)
@@ -164,6 +168,18 @@ enum dsi_pm_type {
 #define DSI_INTR_CMD_MDP_DONE		BIT(8)
 #define DSI_INTR_CMD_DMA_DONE_MASK	BIT(1)
 #define DSI_INTR_CMD_DMA_DONE		BIT(0)
+
+#ifdef VENDOR_EDIT  //qualcomm modify for lcd crash 2015-04-18
+#define DSI_INTR_MASK_ALL	\
+		(DSI_INTR_DESJEW_MASK | \
+		DSI_INTR_DYNAMIC_REFRESH_MASK | \
+		DSI_INTR_ERROR_MASK | \
+		DSI_INTR_BTA_DONE_MASK | \
+		DSI_INTR_VIDEO_DONE_MASK | \
+		DSI_INTR_CMD_MDP_DONE_MASK | \
+		DSI_INTR_CMD_DMA_DONE_MASK)
+#endif
+
 /* Update this if more interrupt masks are added in future chipsets */
 #define DSI_INTR_TOTAL_MASK		0x2222AA02
 
@@ -363,7 +379,13 @@ struct mdss_dsi_ctrl_pdata {
 	bool panel_bias_vreg;
 	bool dsi_irq_line;
 	atomic_t te_irq_ready;
-
+	#ifdef VENDOR_EDIT  //gzm@oem add 2015-03-26
+	int lcd_esd_te_check;
+	bool use_external_ic_power;
+	int lcd_lm3630_bl;
+	int lcd_tps65132_en;
+	int lcd_tps65132_en_n;
+	#endif
 	bool cmd_clk_ln_recovery_en;
 	bool cmd_sync_wait_broadcast;
 	bool cmd_sync_wait_trigger;
@@ -380,6 +402,9 @@ struct mdss_dsi_ctrl_pdata {
 	struct mdss_intf_recovery *recovery;
 
 	struct dsi_panel_cmds on_cmds;
+	#ifdef VENDOR_EDIT 
+	struct dsi_panel_cmds on_cmds_shoushi;
+	#endif
 	struct dsi_panel_cmds post_dms_on_cmds;
 	struct dsi_panel_cmds off_cmds;
 	struct dsi_panel_cmds status_cmds;

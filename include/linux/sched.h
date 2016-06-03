@@ -1077,6 +1077,9 @@ struct ravg {
 	u64 mark_start;
 	u32 sum, demand;
 	u32 sum_history[RAVG_HIST_SIZE_MAX];
+#ifdef VENDOR_EDIT
+	unsigned mitigated:1;
+#endif
 #ifdef CONFIG_SCHED_FREQ_INPUT
 	u32 curr_window, prev_window;
 #endif
@@ -1285,6 +1288,7 @@ struct task_struct {
 
 	cputime_t utime, stime, utimescaled, stimescaled;
 	cputime_t gtime;
+	unsigned long long cpu_power;
 #ifndef CONFIG_VIRT_CPU_ACCOUNTING_NATIVE
 	struct cputime prev_cputime;
 #endif

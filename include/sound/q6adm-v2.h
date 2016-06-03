@@ -78,6 +78,11 @@ int adm_open(int port, int path, int rate, int mode, int topology,
 			   int perf_mode, uint16_t bits_per_sample,
 			   int app_type, int acdbdev_id);
 
+#ifdef VENDOR_EDIT
+//#lifei@OnePlus.MultiMediaService, 2015/09/25 add set/get dsp interface
+int adm_set_dirac_enable_params(int port_id, uint32_t module_id, int copp_idx, uint32_t param_id, int enable);
+#endif/*VENDOR_EDIT*/
+
 int adm_map_rtac_block(struct rtac_cal_block_data *cal_block);
 
 int adm_unmap_rtac_block(uint32_t *mem_map_handle);

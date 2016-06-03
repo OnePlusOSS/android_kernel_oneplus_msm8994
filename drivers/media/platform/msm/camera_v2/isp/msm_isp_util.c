@@ -512,8 +512,6 @@ int msm_isp_cfg_pix(struct vfe_device *vfe_dev,
 		return -EINVAL;
 	}
 
-	vfe_dev->is_split = input_cfg->d.pix_cfg.is_split;
-
 	vfe_dev->axi_data.src_info[VFE_PIX_0].pixel_clock =
 		input_cfg->input_pix_clk;
 	vfe_dev->axi_data.src_info[VFE_PIX_0].input_mux =
@@ -785,14 +783,12 @@ static long msm_isp_ioctl_unlocked(struct v4l2_subdev *sd,
 		break;
 	case VIDIOC_MSM_ISP_AXI_RESET:
 		mutex_lock(&vfe_dev->core_mutex);
-		rc = msm_isp_stats_reset(vfe_dev);
-		rc |= msm_isp_axi_reset(vfe_dev, arg);
+		rc = msm_isp_axi_reset(vfe_dev, arg);
 		mutex_unlock(&vfe_dev->core_mutex);
 		break;
 	case VIDIOC_MSM_ISP_AXI_RESTART:
 		mutex_lock(&vfe_dev->core_mutex);
-		rc = msm_isp_stats_restart(vfe_dev);
-		rc |= msm_isp_axi_restart(vfe_dev, arg);
+		rc = msm_isp_axi_restart(vfe_dev, arg);
 		mutex_unlock(&vfe_dev->core_mutex);
 		break;
 	case VIDIOC_MSM_ISP_INPUT_CFG:
@@ -1035,8 +1031,6 @@ static int msm_isp_send_hw_cmd(struct vfe_device *vfe_dev,
 	}
 	case VFE_CFG_MASK: {
 		uint32_t temp;
-		bool grab_lock;
-		unsigned long flags;
 		if ((UINT_MAX - sizeof(temp) <
 			reg_cfg_cmd->u.mask_info.reg_offset) ||
 			(resource_size(vfe_dev->vfe_mem) <
@@ -1045,11 +1039,6 @@ static int msm_isp_send_hw_cmd(struct vfe_device *vfe_dev,
 			pr_err("%s: VFE_CFG_MASK: Invalid length\n", __func__);
 			return -EINVAL;
 		}
-		grab_lock = vfe_dev->hw_info->vfe_ops.core_ops.
-			is_module_cfg_lock_needed(reg_cfg_cmd->
-			u.mask_info.reg_offset);
-		if (grab_lock)
-			spin_lock_irqsave(&vfe_dev->shared_data_lock, flags);
 		temp = msm_camera_io_r(vfe_dev->vfe_base +
 			reg_cfg_cmd->u.mask_info.reg_offset);
 
@@ -1057,9 +1046,6 @@ static int msm_isp_send_hw_cmd(struct vfe_device *vfe_dev,
 		temp |= reg_cfg_cmd->u.mask_info.val;
 		msm_camera_io_w(temp, vfe_dev->vfe_base +
 			reg_cfg_cmd->u.mask_info.reg_offset);
-		if (grab_lock)
-			spin_unlock_irqrestore(&vfe_dev->shared_data_lock,
-				flags);
 		break;
 	}
 	case VFE_WRITE_DMI_16BIT:
@@ -1574,7 +1560,7 @@ void msm_isp_process_iommu_page_fault(struct vfe_device *vfe_dev)
 
 	msm_isp_axi_halt(vfe_dev, &halt_cmd);
 
-	for (i = 0; i < VFE_AXI_SRC_MAX; i++)
+	for (i = 0; i < MAX_NUM_STREAM; i++)
 		vfe_dev->axi_data.stream_info[i].state = INACTIVE;
 
 	pr_err("%s:%d] vfe_dev %p id %d\n", __func__,
@@ -1650,6 +1636,8 @@ static void msm_isp_process_overflow_irq(
 			return;
 		}
 
+		ISP_DBG("%s: Bus overflow detected: 0x%x, start recovery!\n",
+				__func__, overflow_mask);
 		atomic_set(&vfe_dev->error_info.overflow_state,
 				OVERFLOW_DETECTED);
 		/*Store current IRQ mask*/
@@ -1976,17 +1964,12 @@ int msm_isp_close_node(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 	if (rc <= 0)
 		pr_err("%s: halt timeout rc=%ld\n", __func__, rc);
 
-	/*Stop CAMIF Immediately*/
-	vfe_dev->hw_info->vfe_ops.core_ops.
-		update_camif_state(vfe_dev, DISABLE_CAMIF_IMMEDIATELY);
-
 	vfe_dev->buf_mgr->ops->buf_mgr_deinit(vfe_dev->buf_mgr);
 	vfe_dev->hw_info->vfe_ops.core_ops.release_hw(vfe_dev);
 	if (vfe_dev->vt_enable) {
 		msm_isp_end_avtimer();
 		vfe_dev->vt_enable = 0;
 	}
-	vfe_dev->is_split = 0;
 	mutex_unlock(&vfe_dev->core_mutex);
 	mutex_unlock(&vfe_dev->realtime_mutex);
 	return 0;

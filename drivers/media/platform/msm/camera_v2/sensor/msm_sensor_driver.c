@@ -18,6 +18,12 @@
 #include "msm_cci.h"
 #include "msm_camera_dt_util.h"
 
+#ifdef VENDOR_EDIT
+//added by zhangxiaowei@camera 20150331 for product informatio
+#include <linux/project_info.h>
+#endif /* VENDOR_EDIT */
+
+
 /* Logging macro */
 #undef CDBG
 #define CDBG(fmt, args...) pr_debug(fmt, ##args)
@@ -943,6 +949,11 @@ int32_t msm_sensor_driver_probe(void *setting,
 	s_ctrl->sensordata->cam_slave_info = slave_info;
 
 	msm_sensor_fill_sensor_info(s_ctrl, probed_info, entity_name);
+	#ifdef VENDOR_EDIT	
+    //added by zhangxiaowei@camera 20150331 for product informatio		
+	push_component_info(F_CAMERA, "OV5648", "Omnivision");	
+	push_component_info(R_CAMERA, "OV13860", "Omnivision");
+	#endif /* VENDOR_EDIT */
 
 	return rc;
 

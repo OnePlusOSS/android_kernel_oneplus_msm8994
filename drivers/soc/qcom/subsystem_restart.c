@@ -41,6 +41,11 @@
 
 #include <asm/current.h>
 
+#ifdef VENDOR_EDIT
+/* Add by yangrujin@bsp, 2015/10/26, proc file for restart level */
+#include <linux/proc_fs.h>
+#endif /* VENDOR_EDIT */
+
 #define DISABLE_SSR 0x9889deed
 /* If set to 0x9889deed, call to subsystem_restart_dev() returns immediately */
 static uint disable_restart_work;
@@ -48,6 +53,10 @@ module_param(disable_restart_work, uint, S_IRUGO | S_IWUSR);
 
 static int enable_debug;
 module_param(enable_debug, int, S_IRUGO | S_IWUSR);
+
+/* The maximum shutdown timeout is the product of MAX_LOOPS and DELAY_MS. */
+#define SHUTDOWN_ACK_MAX_LOOPS	50
+#define SHUTDOWN_ACK_DELAY_MS	100
 
 /**
  * enum p_subsys_state - state of a subsystem (private)
@@ -547,6 +556,25 @@ static void disable_all_irqs(struct subsys_device *dev)
 		disable_irq(dev->desc->stop_ack_irq);
 }
 
+int wait_for_shutdown_ack(struct subsys_desc *desc)
+{
+	int count;
+
+	if (desc && !desc->shutdown_ack_gpio)
+		return 0;
+
+	for (count = SHUTDOWN_ACK_MAX_LOOPS; count > 0; count--) {
+		if (gpio_get_value(desc->shutdown_ack_gpio))
+			return count;
+		msleep(SHUTDOWN_ACK_DELAY_MS);
+	}
+
+	pr_err("[%s]: Timed out waiting for shutdown ack\n", desc->name);
+
+	return -ETIMEDOUT;
+}
+EXPORT_SYMBOL(wait_for_shutdown_ack);
+
 static int wait_for_err_ready(struct subsys_device *subsys)
 {
 	int ret;
@@ -636,6 +664,89 @@ static struct subsys_device *find_subsys(const char *str)
 			__find_subsys);
 	return dev ? to_subsys(dev) : NULL;
 }
+
+#ifdef VENDOR_EDIT
+/* Add by yangrujin@bsp, 2015/10/26, proc file for restart level */
+static int val = 0;
+
+static ssize_t proc_restart_level_all_read(struct file *p_file, char __user *puser_buf, size_t count, loff_t *p_offset)
+{
+	ssize_t len = 0;
+	len = copy_to_user(puser_buf, val?"1":"0", 1);
+	pr_info("the restart level switch is:%d\n", val);
+	return len;
+}
+
+static ssize_t proc_restart_level_all_write(struct file *p_file, const char __user *puser_buf,
+			   size_t count, loff_t *p_offset)
+{
+	char temp[1] = {0};
+	struct subsys_device *subsys;
+
+	if (copy_from_user(temp, puser_buf, 1))
+		return -EFAULT;
+
+	sscanf(temp, "%d", &val);
+
+	if (!strncasecmp(&temp[0], "0", 1)) {
+		subsys = find_subsys("venus");
+		if (!subsys)
+			return ENODEV;
+		subsys->restart_level = RESET_SUBSYS_COUPLED;
+
+		subsys = find_subsys("AR6320");
+		if (!subsys)
+			return ENODEV;
+		subsys->restart_level = RESET_SUBSYS_COUPLED;
+
+		subsys = find_subsys("adsp");
+		if (!subsys)
+			return ENODEV;
+		subsys->restart_level = RESET_SUBSYS_COUPLED;
+
+		subsys = find_subsys("modem");
+		if (!subsys)
+			return ENODEV;
+		subsys->restart_level = RESET_SUBSYS_COUPLED;
+	}else if (!strncasecmp(&temp[0], "1", 1)){
+		subsys = find_subsys("venus");
+		if (!subsys)
+			return ENODEV;
+		subsys->restart_level = RESET_SOC;
+
+		subsys = find_subsys("AR6320");
+		if (!subsys)
+			return ENODEV;
+		subsys->restart_level = RESET_SOC;
+
+		subsys = find_subsys("adsp");
+		if (!subsys)
+			return ENODEV;
+		subsys->restart_level = RESET_SOC;
+
+		subsys = find_subsys("modem");
+		if (!subsys)
+			return ENODEV;
+		subsys->restart_level = RESET_SOC;
+	}
+
+	pr_info("write the restart level switch to :%d\n", val);
+	return count;
+}
+
+static const struct file_operations restart_level_all_operations = {
+    .read = proc_restart_level_all_read,
+	.write = proc_restart_level_all_write,
+};
+
+static void init_restart_level_all_node( void )
+{
+	if (!proc_create("restart_level_all", 0644, NULL,
+			 &restart_level_all_operations)){
+		pr_err("%s : Failed to register proc interface\n", __func__);
+	}
+}
+#endif /* VENDOR_EDIT */
 
 static int subsys_start(struct subsys_device *subsys)
 {
@@ -1425,6 +1536,11 @@ static int subsys_parse_devicetree(struct subsys_desc *desc)
 	if (ret && ret != -ENOENT)
 		return ret;
 
+	ret = __get_gpio(desc, "qcom,gpio-shutdown-ack",
+			&desc->shutdown_ack_gpio);
+	if (ret && ret != -ENOENT)
+		return ret;
+
 	ret = platform_get_irq(pdev, 0);
 	if (ret > 0)
 		desc->wdog_bite_irq = ret;
@@ -1691,6 +1807,11 @@ static int __init subsys_restart_init(void)
 			&panic_nb);
 	if (ret)
 		goto err_soc;
+
+#ifdef VENDOR_EDIT
+/* Add by yangrujin@bsp, 2015/10/26, proc file for restart level */
+	init_restart_level_all_node();
+#endif /* VENDOR_EDIT */
 
 	return 0;
 

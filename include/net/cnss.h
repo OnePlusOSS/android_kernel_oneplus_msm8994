@@ -114,6 +114,10 @@ enum cnss_runtime_request {
 	CNSS_PM_RUNTIME_PUT_AUTO,
 };
 
+//#ifdef VENDOR_EDIT
+extern void cnss_set_fw_version(u32 version);
+//#endif /* VENDOR_EDIT */
+
 extern int cnss_get_fw_image(struct image_desc_info *image_desc_info);
 extern void cnss_runtime_init(struct device *dev, int auto_delay);
 extern void cnss_runtime_exit(struct device *dev);

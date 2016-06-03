@@ -1850,7 +1850,10 @@ composite_suspend(struct usb_gadget *gadget)
 
 	cdev->suspended = 1;
 
+/* david.liu@oneplus.tw,20160325  Fix peformance of usb charging */
+#ifndef VENDOR_EDIT
 	usb_gadget_vbus_draw(gadget, 2);
+#endif
 }
 
 static void

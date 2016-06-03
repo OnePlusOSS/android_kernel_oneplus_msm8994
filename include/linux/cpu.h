@@ -281,6 +281,14 @@ struct cpu_pwr_stats *get_cpu_pwr_stats(void);
 void trigger_cpu_pwr_stats_calc(void);
 int register_cpu_pwr_stats_ready_notifier(struct notifier_block *nb);
 
+#ifdef VENDOR_EDIT
+/* ic, declaration for hcube extension */
+unsigned int power_cost_at_freq_at_temp(
+	unsigned int cpu,
+	unsigned int freq,
+	long temp);
+#endif
+
 enum cpuhp_state {
 	CPUHP_OFFLINE,
 	CPUHP_ONLINE,

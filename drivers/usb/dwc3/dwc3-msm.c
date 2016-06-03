@@ -77,7 +77,11 @@ module_param(override_phy_init, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(override_phy_init, "Override HSPHY Init Seq");
 
 /* Enable Proprietary charger detection */
+#ifdef  VENDOR_EDIT
+static bool prop_chg_detect=1;
+#else
 static bool prop_chg_detect;
+#endif
 module_param(prop_chg_detect, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(prop_chg_detect, "Enable Proprietary charger detection");
 
@@ -1454,7 +1458,7 @@ static void dwc3_chg_detect_work(struct work_struct *w)
 				mdwc->ext_chg_active = true;
 			}
 		}
-		dev_dbg(mdwc->dev, "chg_type = %s\n",
+		dev_err(mdwc->dev, "chg_type = %s\n",
 			chg_to_string(mdwc->charger.chg_type));
 		mdwc->charger.notify_detection_complete(mdwc->otg_xceiv->otg,
 								&mdwc->charger);
@@ -2394,7 +2398,7 @@ static int dwc3_msm_power_set_property_usb(struct power_supply *psy,
 		if (mdwc->charger.chg_type != DWC3_INVALID_CHARGER)
 			mdwc->chg_state = USB_CHG_STATE_DETECTED;
 
-		dev_dbg(mdwc->dev, "%s: charger type: %s\n", __func__,
+		dev_info(mdwc->dev, "%s: charger type: %s\n", __func__,
 				chg_to_string(mdwc->charger.chg_type));
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
@@ -2453,6 +2457,7 @@ dwc3_msm_property_is_writeable(struct power_supply *psy,
 static char *dwc3_msm_pm_power_supplied_to[] = {
 	"battery",
 	"bms",
+	"bcl",
 };
 
 static enum power_supply_property dwc3_msm_pm_power_props_usb[] = {

@@ -2942,8 +2942,11 @@ static struct module *layout_and_allocate(struct load_info *info, int flags)
 		return mod;
 
 	err = check_modinfo(mod, info, flags);
+	//shankai@bsp ,add for do not check kernel MAGIC when insmode module 2016.1.26
+	#ifndef VENDOR_EDIT
 	if (err)
 		return ERR_PTR(err);
+	#endif
 
 	/* Allow arches to frob section contents and sizes.  */
 	err = module_frob_arch_sections(info->hdr, info->sechdrs,

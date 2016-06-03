@@ -16,3 +16,8 @@
 EXPORT_TRACEPOINT_SYMBOL_GPL(cpu_idle);
 EXPORT_TRACEPOINT_SYMBOL(core_ctl_set_busy);
 EXPORT_TRACEPOINT_SYMBOL(core_ctl_eval_need);
+
+#ifdef VENDOR_EDIT
+EXPORT_TRACEPOINT_SYMBOL(hcube_set_busy);
+EXPORT_TRACEPOINT_SYMBOL(hcube_eval_need);
+#endif

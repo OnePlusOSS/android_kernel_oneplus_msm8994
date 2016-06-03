@@ -62,6 +62,10 @@ struct itimerval {
 #define CLOCK_TAI			11
 #define CLOCK_POWEROFF_ALARM		12
 
+#ifdef VENDOR_EDIT  //shankai@oem add 2015-11-14 power up alarm support
+#define CLOCK_POWEROFF_ALARM		12
+#endif //VENDOR_EDIT 
+
 #define MAX_CLOCKS			16
 #define CLOCKS_MASK			(CLOCK_REALTIME | CLOCK_MONOTONIC)
 #define CLOCKS_MONO			CLOCK_MONOTONIC

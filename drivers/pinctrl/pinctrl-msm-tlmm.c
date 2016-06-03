@@ -22,6 +22,7 @@
 #include <linux/spinlock.h>
 #include <linux/syscore_ops.h>
 #include "pinctrl-msm.h"
+#include <linux/sched.h>
 
 /* config translations */
 #define drv_str_to_rval(drv)	((drv >> 1) - 1)
@@ -960,6 +961,21 @@ static void msm_tlmm_gp_irq_resume(void)
 	for_each_set_bit(i, ic->wake_irqs, num_irqs)
 		msm_tlmm_set_intr_cfg_enable(ic, i, 0);
 
+#ifdef VENDOR_EDIT
+/* Jialong.Wu,add 2015/5/9  Add for wakeup analysis */
+    for_each_set_bit(i, ic->wake_irqs, ic->num_irqs){
+	if (msm_tlmm_get_intr_status(ic, i))
+	   {
+	      dev_info(ic->dev, "hwirq %s %d[%d] triggered\n",
+	      irq_to_desc(gpio_to_irq((unsigned int)(i+878)))->action->name,
+	      (gpio_to_irq((unsigned int)(i+878))), (unsigned int)i);
+		  if((gpio_to_irq((unsigned int)(i+878))) == 604)//spi12.0
+		  {
+			  sched_set_boost(1);//wujialong 20160119,enable sched_boost when fingerprint wakeup
+		  }
+	   }
+    }
+#endif /* VENDOR_EDIT */
 	for_each_set_bit(i, ic->enabled_irqs, num_irqs)
 		msm_tlmm_set_intr_cfg_enable(ic, i, 1);
 	mb();
@@ -1094,6 +1110,90 @@ static struct msm_pintype_info tlmm_pininfo[] = {
 		.name = "ebi",
 	}
 };
+
+#ifdef VENDOR_EDIT
+static uint need_dump_pinctrl;
+module_param(need_dump_pinctrl, uint, 0644);
+MODULE_PARM_DESC(need_dump_pinctrl, "need_dump_pinctrl");
+
+#define PINCTRL_START 0
+#define PINCTRL_END  145
+char * gpio_pull(int pull)
+{
+	switch(pull){
+		case 0:
+			return "NP";
+		case 1:
+			return "PD";
+		case 2:
+			return "keeper";
+		case 3:
+			return "PU";
+	}
+	return "N/A";
+}
+
+static void msm_tlmm_gp_func_cfg_get(uint pin_no, const struct msm_pintype_info *pinfo, unsigned int * gp_func_cfg, unsigned int * gpio_value)
+{
+	void __iomem *cfg_reg = TLMM_GP_CFG(pinfo, pin_no);
+	void __iomem *inout_reg = TLMM_GP_INOUT(pinfo, pin_no);
+
+	*gp_func_cfg = readl_relaxed(cfg_reg);
+	*gpio_value = readl_relaxed(inout_reg);
+}
+
+
+struct pinctrl_config_table_t {
+	int gp_no;
+	int suspend_pull_config;
+	int resume_pull_config;
+};
+
+//Provided by HW Linyoude and Chenbiao
+static struct pinctrl_config_table_t pinctrl_config_table[]= {
+		{23, PIN_CONFIG_BIAS_DISABLE, PIN_CONFIG_BIAS_PULL_UP},
+		{24, PIN_CONFIG_BIAS_DISABLE, PIN_CONFIG_BIAS_PULL_UP},
+		{38, PIN_CONFIG_BIAS_DISABLE, PIN_CONFIG_BIAS_PULL_UP},
+		{43, PIN_CONFIG_BIAS_DISABLE, PIN_CONFIG_BIAS_DISABLE},
+		{44, PIN_CONFIG_BIAS_DISABLE, PIN_CONFIG_BIAS_DISABLE},
+		{54, PIN_CONFIG_BIAS_DISABLE, PIN_CONFIG_BIAS_PULL_UP},
+		{72, PIN_CONFIG_BIAS_DISABLE, PIN_CONFIG_BIAS_PULL_UP},
+		{73, PIN_CONFIG_BIAS_DISABLE, PIN_CONFIG_BIAS_PULL_UP}
+};
+void pinctrl_suspend_resume_config(bool to_suspend)
+{
+	int i;
+
+	for(i = 0 ; i < sizeof(pinctrl_config_table)/sizeof(pinctrl_config_table[0]); i ++){
+		if(to_suspend)
+			msm_tlmm_gp_cfg(pinctrl_config_table[i].gp_no, (unsigned long *)&(pinctrl_config_table[i].suspend_pull_config), 1, &tlmm_pininfo[0]);
+		else
+			msm_tlmm_gp_cfg(pinctrl_config_table[i].gp_no, (unsigned long *)&(pinctrl_config_table[i].resume_pull_config), 1, &tlmm_pininfo[0]);
+	}
+}
+EXPORT_SYMBOL(pinctrl_suspend_resume_config);
+
+void pinctrl_suspend_dump(void)
+{
+	int i ;
+	unsigned int gp_func_cfg, gpio_value;
+	if(need_dump_pinctrl){
+		for(i = PINCTRL_START ; i <= PINCTRL_END; i ++){
+			msm_tlmm_gp_func_cfg_get(i ,&tlmm_pininfo[0], &gp_func_cfg, &gpio_value);
+
+			pr_info("pin %3d gpio %4d FS:%d,  %3s  PULL:%7s DRV: %2dmA  VALUE %ld\n",
+						i,  878+ i,
+						(gp_func_cfg & 0x3C) >>2,
+						(gp_func_cfg & 0x200)>>9?"OUT":"IN",
+						gpio_pull(gp_func_cfg & 0x3),
+						(((gp_func_cfg &0x1c0)>>6) + 1)*2,
+						(gp_func_cfg & 0x200)>>9? ((gpio_value&BIT(1))>>1):(gpio_value&BIT(0)));
+			//pr_info("pin %d: 0x%x  0x%x\n",i,gp_func_cfg, gpio_value);
+		}
+	}
+}
+EXPORT_SYMBOL(pinctrl_suspend_dump);
+#endif /* VENDOR_EDIT */
 
 #define DECLARE_PINTYPE_DATA_GP(name, offset, regsize)	\
 static const struct msm_pintype_data name = {		\

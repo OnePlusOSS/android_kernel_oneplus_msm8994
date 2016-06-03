@@ -70,6 +70,18 @@ obj-$(CONFIG_TOUCHSCREEN_WM97XX)	+= wm97xx-ts.o
 wm97xx-ts-$(CONFIG_TOUCHSCREEN_WM9705)	+= wm9705.o
 wm97xx-ts-$(CONFIG_TOUCHSCREEN_WM9712)	+= wm9712.o
 wm97xx-ts-$(CONFIG_TOUCHSCREEN_WM9713)	+= wm9713.o
+
+#ifdef VENDOR_EDIT /* LiuPing@Phone.BSP.Sensor, 2014/10/11, add for tp. */
+#obj-$(CONFIG_TOUCHSCREEN_SYNAPTICS_S3508_I2C_RMI) += synaptics_dsx_i2c.o
+#obj-$(CONFIG_TOUCHSCREEN_SYNAPTICS_S1302_I2C_RMI) += synaptics_dsx_fw_update.o
+#obj-$(CONFIG_TOUCHSCREEN_SYNAPTICS_S3508_I2C_RMI) += synaptics_dsx_rmi_dev.o
+#obj-$(CONFIG_TOUCHSCREEN_SYNAPTICS_S1302_I2C_RMI) += synaptics_dsx_s1302.o
+obj-$(CONFIG_TOUCHSCREEN_SYNAPTICS_S3320_I2C_RMI) += synaptics_driver_s3320.o
+obj-$(CONFIG_TOUCHSCREEN_SYNAPTICS_S3320_I2C_RMI) += synaptics_s3320_redremote.o
+obj-$(CONFIG_TOUCHSCREEN_SYNAPTICS_S1302_I2C_RMI) += synaptics_driver_s1302.o
+obj-$(CONFIG_TOUCHSCREEN_SYNAPTICS_S1302_I2C_RMI) += synaptics_s1302_redremote.o
+#endif /*VENDOR_EDIT*/
+
 obj-$(CONFIG_TOUCHSCREEN_WM97XX_ATMEL)	+= atmel-wm97xx.o
 obj-$(CONFIG_TOUCHSCREEN_WM97XX_MAINSTONE)	+= mainstone-wm97xx.o
 obj-$(CONFIG_TOUCHSCREEN_WM97XX_ZYLONITE)	+= zylonite-wm97xx.o

@@ -246,6 +246,10 @@ static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
 {
 	struct msm_fb_data_type *mfd = dev_get_drvdata(led_cdev->dev->parent);
 	int bl_lvl;
+	#ifdef VENDOR_EDIT
+        /*ykl add for debug lcd issue*/
+	static int count = 1;	
+	#endif
 
 	if (mfd->boot_notification_led) {
 		led_trigger_event(mfd->boot_notification_led, 0);
@@ -255,6 +259,15 @@ static void mdss_fb_set_bl_brightness(struct led_classdev *led_cdev,
 	if (value > mfd->panel_info->brightness_max)
 		value = mfd->panel_info->brightness_max;
 
+	#ifdef VENDOR_EDIT  /*ykl add for debug lcd issue*/
+	if(count || !value){
+        printk("--------backlight level = %d---------\n",value);
+		count = 0;
+		}
+
+	if(!value)
+		count = 1;
+	#endif
 	/* This maps android backlight level 0 to 255 into
 	   driver backlight level 0 to bl_max with rounding */
 	MDSS_BRIGHT_TO_BL(bl_lvl, value, mfd->panel_info->bl_max,
@@ -745,6 +758,31 @@ static ssize_t mdss_fb_get_dfps_mode(struct device *dev,
 	return ret;
 }
 
+#ifdef VENDOR_EDIT/* guozhiming@oem  Add for set cabc function 2015-04-01 */ 
+
+extern int set_cabc(int level);
+extern int cabc_mode;
+
+static ssize_t mdss_get_cabc(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+
+    return sprintf(buf, "%d\n", cabc_mode);
+	
+}
+
+static ssize_t mdss_set_cabc(struct device *dev,
+                               struct device_attribute *attr,
+                               const char *buf, size_t count)
+{
+    int level = 0;
+    sscanf(buf, "%du", &level);	
+    set_cabc(level);
+    return count;
+}
+
+#endif /*VENDOR_EDIT*/
+
 static DEVICE_ATTR(msm_fb_type, S_IRUGO, mdss_fb_get_type, NULL);
 static DEVICE_ATTR(msm_fb_split, S_IRUGO | S_IWUSR, mdss_fb_show_split,
 					mdss_fb_store_split);
@@ -761,6 +799,11 @@ static DEVICE_ATTR(msm_fb_panel_status, S_IRUGO | S_IWUSR,
 	mdss_fb_get_panel_status, mdss_fb_force_panel_dead);
 static DEVICE_ATTR(msm_fb_dfps_mode, S_IRUGO | S_IWUSR,
 	mdss_fb_get_dfps_mode, mdss_fb_change_dfps_mode);
+#ifdef VENDOR_EDIT
+/* guozhiming@oem  Add for set cabc function 2015-04-01 */ 
+static DEVICE_ATTR(cabc, S_IRUGO|S_IWUSR, mdss_get_cabc, mdss_set_cabc);
+#endif /*VENDOR_EDIT*/
+
 static struct attribute *mdss_fb_attrs[] = {
 	&dev_attr_msm_fb_type.attr,
 	&dev_attr_msm_fb_split.attr,
@@ -772,6 +815,10 @@ static struct attribute *mdss_fb_attrs[] = {
 	&dev_attr_msm_fb_thermal_level.attr,
 	&dev_attr_msm_fb_panel_status.attr,
 	&dev_attr_msm_fb_dfps_mode.attr,
+	#ifdef VENDOR_EDIT
+    /* guozhiming@oem  Add for set cabc function 2015-04-01*/
+	&dev_attr_cabc.attr,
+    #endif /*VENDOR_EDIT*/
 	NULL,
 };
 
@@ -1329,7 +1376,10 @@ void mdss_fb_set_backlight(struct msm_fb_data_type *mfd, u32 bkl_lvl)
 	u32 temp = bkl_lvl;
 	bool ad_bl_notify_needed = false;
 	bool bl_notify_needed = false;
+#ifdef VENDOR_EDIT
 
+    long long unsigned a,b,c;
+#endif
 	if ((((mdss_fb_is_power_off(mfd) && mfd->dcm_state != DCM_ENTER)
 		|| !mfd->bl_updated) && !IS_CALIB_MODE_BL(mfd)) ||
 		mfd->panel_info->cont_splash_enabled) {
@@ -1363,6 +1413,22 @@ void mdss_fb_set_backlight(struct msm_fb_data_type *mfd, u32 bkl_lvl)
 			if (mfd->bl_level != bkl_lvl)
 				bl_notify_needed = true;
 			pr_debug("backlight sent to panel :%d\n", temp);
+#ifdef VENDOR_EDIT
+			if(0 != temp)
+			{
+				if(temp <= 3680)
+				{
+					  a = 869565 * temp;
+					  b = a/1000000;
+					  temp = b;
+				}else{
+				      a = 215663 * temp;
+					  b = a/100000;
+					  c = b - 4736;
+					  temp = c;
+				}
+			}
+#endif  //guozhiming modify for the backlight 20mA
 			pdata->set_backlight(pdata, temp);
 			mfd->bl_level = bkl_lvl;
 			mfd->bl_level_scaled = temp;
@@ -1641,7 +1707,11 @@ static int mdss_fb_blank_sub(int blank_mode, struct fb_info *info,
 	switch (blank_mode) {
 	case FB_BLANK_UNBLANK:
 		pr_debug("unblank called. cur pwr state=%d\n", cur_power_state);
+		#ifdef VENDOR_EDIT  /*ykl add for debug lcd issue*/
+	//	printk("display power on start\n");
 		ret = mdss_fb_blank_unblank(mfd);
+	//	printk("display power on end  \n");
+		#endif
 		break;
 	case BLANK_FLAG_ULP:
 		req_power_state = MDSS_PANEL_POWER_LP2;
@@ -1675,7 +1745,11 @@ static int mdss_fb_blank_sub(int blank_mode, struct fb_info *info,
 	default:
 		req_power_state = MDSS_PANEL_POWER_OFF;
 		pr_debug("blank powerdown called\n");
+		#ifdef VENDOR_EDIT  /*ykl add for debug lcd issue*/
+		//printk("display  power off  start\n");
 		ret = mdss_fb_blank_blank(mfd, req_power_state);
+	//	printk("display  power off  end  \n");
+		#endif
 		break;
 	}
 

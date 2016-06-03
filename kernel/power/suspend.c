@@ -168,6 +168,10 @@ void __attribute__ ((weak)) arch_suspend_enable_irqs(void)
  *
  * This function should be called after devices have been suspended.
  */
+#ifdef VENDOR_EDIT
+extern void regulator_suspend_dump(void);
+extern void pinctrl_suspend_dump(void);
+#endif /* VENDOR_EDIT */
 static int suspend_enter(suspend_state_t state, bool *wakeup)
 {
 	char suspend_abort[MAX_SUSPEND_ABORT_LEN];
@@ -222,6 +226,10 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 	if (!error) {
 		*wakeup = pm_wakeup_pending();
 		if (!(suspend_test(TEST_CORE) || *wakeup)) {
+#ifdef VENDOR_EDIT
+			regulator_suspend_dump();
+			pinctrl_suspend_dump();
+#endif /* VENDOR_EDIT */
 			error = suspend_ops->enter(state);
 			events_check_enabled = false;
 		} else if (*wakeup) {

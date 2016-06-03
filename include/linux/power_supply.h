@@ -90,6 +90,9 @@ enum {
 enum power_supply_property {
 	/* Properties of type `int' */
 	POWER_SUPPLY_PROP_STATUS = 0,
+#ifdef VENDOR_EDIT
+	POWER_SUPPLY_PROP_CHG_PROTECT_STATUS,
+#endif
 	POWER_SUPPLY_PROP_CHARGE_TYPE,
 	POWER_SUPPLY_PROP_HEALTH,
 	POWER_SUPPLY_PROP_PRESENT,

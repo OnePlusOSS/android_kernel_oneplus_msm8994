@@ -172,6 +172,11 @@ enum msm_cpu {
 	MSM_CPU_TELLURIUM,
 	MSM_CPU_TERBIUM,
 	MSM_CPU_8929,
+
+#ifdef VENDOR_EDIT
+	/* ted, compitable with msm8996, keep 10 for buffering */
+	MSM_CPU_8996 = MSM_CPU_8929 + 10
+#endif
 };
 
 struct msm_soc_info {

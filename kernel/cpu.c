@@ -553,7 +553,6 @@ void __ref enable_nonboot_cpus(void)
 	cpu_hotplug_disabled = 0;
 	if (cpumask_empty(frozen_cpus))
 		goto out;
-
 	printk(KERN_INFO "Enabling non-boot CPUs ...\n");
 
 	arch_enable_nonboot_cpus_begin();

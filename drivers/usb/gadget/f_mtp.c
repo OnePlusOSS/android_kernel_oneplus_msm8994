@@ -39,6 +39,35 @@
 #define MTP_BULK_BUFFER_SIZE       16384
 #define INTR_BUFFER_SIZE           28
 
+/*
+* Currently tx and rx buffer len is 131072, inter buffer len is 28.
+* Tx buffer counts is 4, Rx is 2 and intr is 5.
+* In order avoid MTP can't work issue, use fixed memory.
+* 0xAC400000 ------
+*           |  TX  | 0x20000 * 4
+* 0xAC480000 ------
+*           |  RX  | 0x20000 * 2
+* 0xAC4C0000 ------
+*           | INTR | 0x40(alignment) * 5
+*            ------
+*/
+/*Anderson-MTP_cant_work+[*/
+#ifdef VENDOR_EDIT
+/*0xAC400000, 0xAC420000, 0xAC440000, 0xAC460000*/
+#define MTP_TX_BUFFER_BASE           0xAC400000
+/*0xAC480000, 0xAC4A0000*/
+#define MTP_RX_BUFFER_BASE           0xAC480000
+/*0xAC4C0000, 0xAC4C0040, 0xAC4C0080, 0xAC4C00C0, 0xAC4C0100*/
+#define MTP_INTR_BUFFER_BASE         0xAC4C0000
+static int mtpBufferOffset =0;
+static bool useFixAddr = false;
+enum buf_type {
+	TX_BUFFER = 0,
+	RX_BUFFER,
+	INTR_BUFFER,
+};
+#endif /* VENDOR_EDIT */
+
 /* String IDs */
 #define INTERFACE_STRING_INDEX	0
 
@@ -363,18 +392,56 @@ static inline struct mtp_dev *func_to_mtp(struct usb_function *f)
 	return container_of(f, struct mtp_dev, function);
 }
 
+#ifdef VENDOR_EDIT
+static struct usb_request *mtp_request_new(struct usb_ep *ep, int buffer_size, enum buf_type type)
+#else
 static struct usb_request *mtp_request_new(struct usb_ep *ep, int buffer_size)
+#endif /* VENDOR_EDIT */
 {
 	struct usb_request *req = usb_ep_alloc_request(ep, GFP_KERNEL);
 	if (!req)
 		return NULL;
 
 	/* now allocate buffers for the requests */
+	/*Anderson-MTP_cant_work*[*/
+	#ifdef VENDOR_EDIT
+	if(useFixAddr == true) {
+		if(type == TX_BUFFER){
+			req->buf = __va(MTP_TX_BUFFER_BASE + mtpBufferOffset);
+			//pr_info("TX_BUFFE:%p\n", req->buf);
+		}
+		else if(type == RX_BUFFER){
+			req->buf = __va(MTP_RX_BUFFER_BASE + mtpBufferOffset);
+			//pr_info("RX_BUFFE:%p\n", req->buf);
+		}
+		else{
+			req->buf = __va(MTP_INTR_BUFFER_BASE + mtpBufferOffset);
+			//pr_info("INTR_BUFFE:%p\n", req->buf);
+		}
+	}
+	else{
+		req->buf = kmalloc(buffer_size, GFP_KERNEL);
+	}
+	memset(req->buf, 0, buffer_size);
+	#else
 	req->buf = kmalloc(buffer_size, GFP_KERNEL);
+	#endif /* VENDOR_EDIT */
+	/*Anderson-MTP_cant_work*]*/
 	if (!req->buf) {
 		usb_ep_free_request(ep, req);
 		return NULL;
 	}
+
+	/*Anderson-MTP_cant_work+[*/
+	#ifdef VENDOR_EDIT
+	if(useFixAddr == true) {
+		if(buffer_size == INTR_BUFFER_SIZE)
+			mtpBufferOffset += 0x40; /*alignment*/
+		else
+			mtpBufferOffset += buffer_size;
+	}
+	#endif /* VENDOR_EDIT */
+	/*Anderson-MTP_cant_work+]*/
 
 	return req;
 }
@@ -382,7 +449,18 @@ static struct usb_request *mtp_request_new(struct usb_ep *ep, int buffer_size)
 static void mtp_request_free(struct usb_request *req, struct usb_ep *ep)
 {
 	if (req) {
+		/*Anderson-MTP_cant_work*[*/
+		#ifdef VENDOR_EDIT
+		if(useFixAddr == true) {
+			req->buf = NULL;
+			mtpBufferOffset = 0;
+		}
+		else
+			kfree(req->buf);
+		#else
 		kfree(req->buf);
+		#endif
+		/*Anderson-MTP_cant_work+]*/
 		usb_ep_free_request(ep, req);
 	}
 }
@@ -509,9 +587,27 @@ retry_tx_alloc:
 	if (mtp_tx_req_len > MTP_BULK_BUFFER_SIZE)
 		mtp_tx_reqs = 4;
 
+	#ifdef VENDOR_EDIT
+	/*
+	* References from init.qcom.early_boot.sh. It different with msm8996.
+	* Because if set in init.qcom.usb.sh, it too late int msm8974.
+	*/
+	if(mtp_tx_req_len == 131072 && mtp_rx_req_len == 131072 && mtp_tx_reqs == 4)
+		useFixAddr = true;
+	else
+		useFixAddr = false;
+
+	pr_info("useFixAddr:%s\n", useFixAddr?"true":"false");
+	mtpBufferOffset =0;
+	#endif /* VENDOR_EDIT */
+
 	/* now allocate requests for our endpoints */
 	for (i = 0; i < mtp_tx_reqs; i++) {
+		#ifdef VENDOR_EDIT
+		req = mtp_request_new(dev->ep_in, mtp_tx_req_len, TX_BUFFER);
+		#else
 		req = mtp_request_new(dev->ep_in, mtp_tx_req_len);
+		#endif /* VENDOR_EDIT */
 		if (!req) {
 			if (mtp_tx_req_len <= MTP_BULK_BUFFER_SIZE)
 				goto fail;
@@ -535,8 +631,15 @@ retry_tx_alloc:
 		mtp_rx_req_len = MTP_BULK_BUFFER_SIZE;
 
 retry_rx_alloc:
+	#ifdef VENDOR_EDIT
+	mtpBufferOffset =0;
+	#endif /* VENDOR_EDIT */
 	for (i = 0; i < RX_REQ_MAX; i++) {
+		#ifdef VENDOR_EDIT
+		req = mtp_request_new(dev->ep_out, mtp_rx_req_len, RX_BUFFER);
+		#else
 		req = mtp_request_new(dev->ep_out, mtp_rx_req_len);
+		#endif /* VENDOR_EDIT */
 		if (!req) {
 			if (mtp_rx_req_len <= MTP_BULK_BUFFER_SIZE)
 				goto fail;
@@ -548,8 +651,16 @@ retry_rx_alloc:
 		req->complete = mtp_complete_out;
 		dev->rx_req[i] = req;
 	}
+
+	#ifdef VENDOR_EDIT
+	mtpBufferOffset =0;
+	#endif /* VENDOR_EDIT */
 	for (i = 0; i < INTR_REQ_MAX; i++) {
+		#ifdef VENDOR_EDIT
+		req = mtp_request_new(dev->ep_intr, INTR_BUFFER_SIZE, INTR_BUFFER);
+		#else
 		req = mtp_request_new(dev->ep_intr, INTR_BUFFER_SIZE);
+		#endif /* VENDOR_EDIT */
 		if (!req)
 			goto fail;
 		req->complete = mtp_complete_intr;

@@ -31,6 +31,12 @@
 
 #define XO_CLK_RATE	19200000
 
+#ifdef VENDOR_EDIT/*guozhiming@oem_display add for the RF WLAN mode using*/
+//#include <linux/boot_mode.h>
+
+//static int rf_wlan_test_mode=0;
+
+#endif
 static struct dsi_drv_cm_data shared_ctrl_data;
 
 static int mdss_dsi_pinctrl_set_state(struct mdss_dsi_ctrl_pdata *ctrl_pdata,
@@ -73,6 +79,7 @@ static int mdss_dsi_labibb_vreg_init(struct platform_device *pdev)
 	return 0;
 }
 
+extern int syna_use_gesture;
 static int mdss_dsi_labibb_vreg_ctrl(struct mdss_dsi_ctrl_pdata *ctrl,
 							int enable)
 {
@@ -97,21 +104,24 @@ static int mdss_dsi_labibb_vreg_ctrl(struct mdss_dsi_ctrl_pdata *ctrl,
 			regulator_disable(ctrl->lab);
 			return rc;
 		}
+		msleep(20);
 
 	} else {
-		rc = regulator_disable(ctrl->lab);
-		if (rc) {
-			pr_err("%s: disable failed for lab regulator\n",
-							__func__);
-			return rc;
-		}
+	    if (!syna_use_gesture){
+    		rc = regulator_disable(ctrl->lab);
+    		if (rc) {
+    			pr_err("%s: disable failed for lab regulator\n",
+    							__func__);
+    			return rc;
+    		}
 
-		rc = regulator_disable(ctrl->ibb);
-		if (rc) {
-			pr_err("%s: disable failed for ibb regulator\n",
-							__func__);
-			return rc;
-		}
+    		rc = regulator_disable(ctrl->ibb);
+    		if (rc) {
+    			pr_err("%s: disable failed for ibb regulator\n",
+    							__func__);
+    			return rc;
+    		}
+        }
 	}
 
 	return 0;
@@ -143,17 +153,22 @@ static int mdss_dsi_regulator_init(struct platform_device *pdev)
 			pr_err("%s: failed to init vregs for %s\n",
 				__func__, __mdss_dsi_pm_name(i));
 	}
-
+	
 	mdss_dsi_labibb_vreg_init(pdev);
 
 	return rc;
 }
+#ifdef VENDOR_EDIT
+extern int vendor_lcd_power_on(struct mdss_panel_data *pdata, int enable);
+#endif
 
 static int mdss_dsi_panel_power_off(struct mdss_panel_data *pdata)
 {
 	int ret = 0;
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
 	int i = 0;
+
+  //  pr_err("%s\n",__func__); //for debug
 
 	if (pdata == NULL) {
 		pr_err("%s: Invalid input data\n", __func__);
@@ -164,6 +179,25 @@ static int mdss_dsi_panel_power_off(struct mdss_panel_data *pdata)
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
 
+#ifdef VENDOR_EDIT
+    if (ctrl_pdata->panel_bias_vreg) {
+		pr_debug("%s: Disabling panel bias vreg. ndx = %d\n",
+		       __func__, ctrl_pdata->ndx);
+		if (mdss_dsi_labibb_vreg_ctrl(ctrl_pdata, false))
+			pr_err("Unable to disable bias vreg\n");
+		/* Add delay recommended by panel specs */
+		udelay(5000);
+	}
+#endif
+
+#ifdef VENDOR_EDIT
+
+	if (ctrl_pdata->use_external_ic_power){
+		
+			vendor_lcd_power_on(pdata, 0);
+		}
+#endif
+
 	ret = mdss_dsi_panel_reset(pdata, 0);
 	if (ret) {
 		pr_warn("%s: Panel reset failed. rc=%d\n", __func__, ret);
@@ -172,7 +206,7 @@ static int mdss_dsi_panel_power_off(struct mdss_panel_data *pdata)
 
 	if (mdss_dsi_pinctrl_set_state(ctrl_pdata, false))
 		pr_debug("reset disable: pinctrl not enabled\n");
-
+#ifndef VENDOR_EDIT
 	if (ctrl_pdata->panel_bias_vreg) {
 		pr_debug("%s: Disabling panel bias vreg. ndx = %d\n",
 		       __func__, ctrl_pdata->ndx);
@@ -181,7 +215,7 @@ static int mdss_dsi_panel_power_off(struct mdss_panel_data *pdata)
 		/* Add delay recommended by panel specs */
 		udelay(2000);
 	}
-
+#endif
 	for (i = DSI_MAX_PM - 1; i >= 0; i--) {
 		/*
 		 * Core power module will be disabled when the
@@ -207,14 +241,14 @@ static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata)
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
 	int i = 0;
 
+  //  pr_err("%s--start\n",__func__);//for debug
+
 	if (pdata == NULL) {
 		pr_err("%s: Invalid input data\n", __func__);
 		return -EINVAL;
 	}
-
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
-
 	for (i = 0; i < DSI_MAX_PM; i++) {
 		/*
 		 * Core power module will be enabled when the
@@ -232,7 +266,7 @@ static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata)
 		}
 	}
 	if (ctrl_pdata->panel_bias_vreg) {
-		pr_debug("%s: Enable panel bias vreg. ndx = %d\n",
+		pr_err("%s: Enable panel bias vreg. ndx = %d\n",
 		       __func__, ctrl_pdata->ndx);
 		if (mdss_dsi_labibb_vreg_ctrl(ctrl_pdata, true))
 			pr_err("Unable to configure bias vreg\n");
@@ -241,6 +275,16 @@ static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata)
 	}
 
 	i--;
+
+#ifdef VENDOR_EDIT  //gzm@oem add 2015-07-04 for EVT2 DVT PVT
+	if (!pdata->panel_info.cont_splash_enabled) 
+		{
+	if (ctrl_pdata->use_external_ic_power){
+		
+			vendor_lcd_power_on(pdata, 1);
+		}
+		}
+#endif
 
 	/*
 	 * If continuous splash screen feature is enabled, then we need to
@@ -728,7 +772,14 @@ int mdss_dsi_on(struct mdss_panel_data *pdata)
 		goto end;
 	}
 
-	ret = mdss_dsi_panel_power_ctrl(pdata, MDSS_PANEL_POWER_ON);
+	#ifndef VENDOR_EDIT /*guozhiming add for RF and WLAN mode */
+        if((get_boot_mode() !=MSM_BOOT_MODE__RF)&&(get_boot_mode() !=MSM_BOOT_MODE__WLAN))
+		ret = mdss_dsi_panel_power_ctrl(pdata, MDSS_PANEL_POWER_ON);
+	#else
+	{
+		ret = mdss_dsi_panel_power_ctrl(pdata, MDSS_PANEL_POWER_ON);
+	}
+	#endif
 	if (ret) {
 		pr_err("%s:Panel power on failed. rc=%d\n", __func__, ret);
 		return ret;
@@ -771,8 +822,19 @@ int mdss_dsi_on(struct mdss_panel_data *pdata)
 	if (mipi->lp11_init) {
 		if (mdss_dsi_pinctrl_set_state(ctrl_pdata, true))
 			pr_debug("reset enable: pinctrl not enabled\n");
+		#ifdef VENDOR_EDIT
+		if (syna_use_gesture)
+			msleep(25);
+		else
+			msleep(12);
 		mdss_dsi_panel_reset(pdata, 1);
+		if (syna_use_gesture)
+			msleep(30);
+		#else
+		mdss_dsi_panel_reset(pdata, 1);
+		#endif
 	}
+
 
 	if (mipi->init_delay)
 		usleep(mipi->init_delay);
@@ -874,7 +936,6 @@ static int mdss_dsi_unblank(struct mdss_panel_data *pdata)
 			ret = ctrl_pdata->low_power_config(pdata, false);
 		goto error;
 	}
-
 	if (!(ctrl_pdata->ctrl_state & CTRL_STATE_PANEL_INIT)) {
 		if (!pdata->panel_info.dynamic_switch_pending) {
 			ret = ctrl_pdata->on(pdata);
@@ -1789,6 +1850,10 @@ static int mdss_dsi_ctrl_probe(struct platform_device *pdev)
 	ctrl_pdata->panel_bias_vreg = of_property_read_bool(
 			pdev->dev.of_node, "qcom,dsi-panel-bias-vreg");
 
+#ifdef VENDOR_EDIT  //gzm@oem add 2015-03-28 -04-23 new modify
+	ctrl_pdata->use_external_ic_power = of_property_read_bool(
+			pdev->dev.of_node, "qcom,use_external_ic_power");
+	#endif
 	/* DSI panels can be different between controllers */
 	rc = mdss_dsi_get_panel_cfg(panel_cfg, ctrl_pdata);
 	if (!rc)
@@ -2113,7 +2178,31 @@ int dsi_panel_device_register(struct device_node *pan_node,
 	if (!gpio_is_valid(ctrl_pdata->disp_te_gpio))
 		pr_err("%s:%d, TE gpio not specified\n",
 						__func__, __LINE__);
+#ifdef VENDOR_EDIT  //gzm@oem add 2015-03-28 -04-23 new modify
+	ctrl_pdata->lcd_esd_te_check = of_get_named_gpio(ctrl_pdev->dev.of_node,
+			"qcom,platform-esd-te-gpio", 0);
+	if (!gpio_is_valid(ctrl_pdata->lcd_esd_te_check))
+		pr_err("%s:%d, LCD ESD TE gpio not specified\n",
+				__func__, __LINE__);
 
+	ctrl_pdata->lcd_lm3630_bl = of_get_named_gpio(ctrl_pdev->dev.of_node,
+			"qcom,lm3630-bklight-en-gpio", 0);
+	if (!gpio_is_valid(ctrl_pdata->lcd_lm3630_bl))
+		pr_err("%s:%d, lm3630 gpio not specified\n",
+				__func__, __LINE__);
+
+	ctrl_pdata->lcd_tps65132_en = of_get_named_gpio(ctrl_pdev->dev.of_node,
+			"qcom,lcd-poweron-en-gpio", 0);
+	if (!gpio_is_valid(ctrl_pdata->lcd_tps65132_en))
+		pr_err("%s:%d, lcd 5v gpio not specified\n",
+				__func__, __LINE__);
+
+	ctrl_pdata->lcd_tps65132_en_n = of_get_named_gpio(ctrl_pdev->dev.of_node,
+			"qcom,lcd-poweron-en-n-gpio", 0);
+	if (!gpio_is_valid(ctrl_pdata->lcd_tps65132_en_n))
+		pr_err("%s:%d, lcd -5v gpio not specified\n",
+				__func__, __LINE__);
+#endif
 	ctrl_pdata->bklt_en_gpio = of_get_named_gpio(ctrl_pdev->dev.of_node,
 		"qcom,platform-bklight-en-gpio", 0);
 	if (!gpio_is_valid(ctrl_pdata->bklt_en_gpio))

@@ -22,6 +22,7 @@
 #include <linux/libfdt.h>
 #include <linux/debugfs.h>
 #include <linux/serial_core.h>
+#include <linux/module.h>
 
 #include <asm/setup.h>  /* for COMMAND_LINE_SIZE */
 #include <asm/page.h>
@@ -780,6 +781,9 @@ u64 __init dt_mem_next_cell(int s, const __be32 **cellp)
 /**
  * early_init_dt_scan_memory - Look for an parse memory nodes
  */
+static unsigned long ddr_size = 0;
+module_param(ddr_size, ulong, S_IRUGO);
+MODULE_PARM_DESC(ddr_size, "ddr size");
 int __init early_init_dt_scan_memory(unsigned long node, const char *uname,
 				     int depth, void *data)
 {
@@ -819,7 +823,7 @@ int __init early_init_dt_scan_memory(unsigned long node, const char *uname,
 			continue;
 		pr_debug(" - %llx ,  %llx\n", (unsigned long long)base,
 		    (unsigned long long)size);
-
+		ddr_size += size;
 		early_init_dt_add_memory_arch(base, size);
 	}
 

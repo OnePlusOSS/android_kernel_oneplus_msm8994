@@ -25,7 +25,7 @@
 #include <sound/asound.h>
 #include <sound/msm-dts-eagle.h>
 #include "msm-dts-srs-tm-config.h"
-
+#include <sound/sounddebug.h>
 #define TIMEOUT_MS 1000
 
 #define RESET_COPP_ID 99
@@ -986,6 +986,82 @@ dolby_dap_send_param_return:
 	kfree(adm_params);
 	return rc;
 }
+
+#ifdef VENDOR_EDIT
+//#lifei@OnePlus.MultiMediaService, 2015/09/25 add set/get dsp interface
+int adm_set_dirac_enable_params(int port_id, uint32_t module_id, int copp_idx, uint32_t param_id, int enable)
+{
+	struct adm_cmd_set_pp_params_dirac_v5 *adm_params = NULL;
+	int ret = 0, sz = 0;
+    int port_idx;
+    pr_debug("DIRAC - %s", __func__);
+    port_id = afe_convert_virtual_to_portid(port_id);
+	port_idx = adm_validate_and_get_port_index(port_id);
+	if (port_idx < 0) {
+		pr_err("%s: Invalid port_id 0x%x\n", __func__, port_id);
+		return -EINVAL;
+	}
+    sz = sizeof(struct adm_cmd_set_pp_params_dirac_v5); 
+    adm_params = kzalloc(sz, GFP_KERNEL);
+    if (!adm_params) {
+        pr_err("%s, adm params memory alloc failed\n",
+		      __func__);
+        return -ENOMEM;
+    }
+	adm_params->payload_size = sizeof(uint32_t) + sizeof(struct adm_param_data_v5);
+    adm_params->params.param_id = param_id;
+    adm_params->params.param_size = sizeof(uint32_t);
+    adm_params->enable = enable;
+    pr_debug("DIRAC - %s: Enable params  = %d\n",
+				__func__, enable);
+
+	adm_params->hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+	adm_params->hdr.pkt_size = sz;
+	adm_params->hdr.src_svc = APR_SVC_ADM;
+	adm_params->hdr.src_domain = APR_DOMAIN_APPS;
+	adm_params->hdr.src_port = port_id;
+	adm_params->hdr.dest_svc = APR_SVC_ADM;
+	adm_params->hdr.dest_domain = APR_DOMAIN_ADSP;
+	adm_params->hdr.dest_port = atomic_read(&this_adm.copp.id[port_idx][copp_idx]);
+	adm_params->hdr.token = port_idx << 16 | copp_idx;
+	adm_params->hdr.opcode = ADM_CMD_SET_PP_PARAMS_V5;
+	adm_params->payload_addr_lsw = 0;
+	adm_params->payload_addr_msw = 0;
+	adm_params->mem_map_handle = 0;
+
+	adm_params->params.module_id = module_id;
+	adm_params->params.reserved = 0;
+
+	pr_debug("DIRAC - %s: Command was sent now check Q6 - port id = %d, size %d, module id %x, param id %x.\n",
+			__func__, adm_params->hdr.dest_port,
+			adm_params->payload_size, adm_params->params.module_id,
+			adm_params->params.param_id);
+
+    atomic_set(&this_adm.copp.stat[port_idx][copp_idx], 0);
+	ret = apr_send_pkt(this_adm.apr, (uint32_t *)adm_params);
+	if (ret < 0) {
+		pr_err("DIRAC - %s: ADM enable for port %d failed\n", __func__,
+			port_id);
+		ret = -EINVAL;
+		goto fail_cmd;
+	}
+	/* Wait for the callback with copp id */
+	ret = wait_event_timeout(this_adm.copp.wait[port_idx][copp_idx],
+		atomic_read(&this_adm.copp.stat[port_idx][copp_idx]),
+		msecs_to_jiffies(TIMEOUT_MS));
+	if (!ret) {
+		pr_err("%s: DIRAC set params timed out port = %d\n",
+			__func__, port_id);
+		ret = -EINVAL;
+		goto fail_cmd;
+	}
+    ret = 0;
+fail_cmd:
+	kfree(adm_params);
+	return ret;
+}
+#endif/*VENDOR_EDIT*/
 
 int adm_get_params(int port_id, int copp_idx, uint32_t module_id,
 		   uint32_t param_id, uint32_t params_length, char *params)
@@ -2117,7 +2193,10 @@ non_mch_path:
 inval_ch_mod:
 	return rc;
 }
-
+#ifdef VENDOR_EDIT
+/* guoguangyi@mutlmedia,2016.4.23,offload and headset,force use 24bits*/
+extern int gis_24bits;
+#endif
 int adm_open(int port_id, int path, int rate, int channel_mode, int topology,
 	     int perf_mode, uint16_t bit_width, int app_type, int acdb_id)
 {
@@ -2125,6 +2204,14 @@ int adm_open(int port_id, int path, int rate, int channel_mode, int topology,
 	int ret = 0;
 	int port_idx, copp_idx, flags;
 	int tmp_port = q6audio_get_port_id(port_id);
+#ifdef VENDOR_EDIT
+    //guoguangyi@mutimedia.2016.04.07,qcom's patch
+    //use 24bits to get rid of 16bits innate noise
+    if(gis_24bits){
+        bit_width = 24;
+        pr_err("Open adm sepcially for offload\n");
+    }
+#endif
 
 	pr_debug("%s:port %#x path:%d rate:%d mode:%d perf_mode:%d,topo_id %d\n",
 		 __func__, port_id, path, rate, channel_mode, perf_mode,
@@ -2455,7 +2542,11 @@ int adm_close(int port_id, int perf_mode, int copp_idx)
 
 	int ret = 0, port_idx;
 	int copp_id = RESET_COPP_ID;
-
+#ifdef VENDOR_EDIT
+    //guoguangyi@mutimedia.2016.04.07,qcom's patch
+    //use 24bits to get rid of 16bits innate noise
+    gis_24bits = 0;
+#endif
 	pr_debug("%s: port_id=0x%x perf_mode: %d copp_idx: %d\n", __func__,
 		 port_id, perf_mode, copp_idx);
 

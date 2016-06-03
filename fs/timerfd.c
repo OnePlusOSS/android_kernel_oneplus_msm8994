@@ -2,7 +2,7 @@
  *  fs/timerfd.c
  *
  *  Copyright (C) 2007  Davide Libenzi <davidel@xmailserver.org>
- *
+ * 
  *
  *  Thanks to Thomas Gleixner for code reviews and useful comments.
  *
@@ -47,6 +47,7 @@ static DEFINE_SPINLOCK(cancel_lock);
 
 static inline bool isalarm(struct timerfd_ctx *ctx)
 {
+
 	return ctx->clockid == CLOCK_REALTIME_ALARM ||
 		ctx->clockid == CLOCK_BOOTTIME_ALARM ||
 		ctx->clockid == CLOCK_POWEROFF_ALARM;

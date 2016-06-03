@@ -36,7 +36,7 @@
 #include <sound/msm-dts-eagle.h>
 #include <sound/audio_effects.h>
 #include <sound/hwdep.h>
-
+#include <sound/sounddebug.h>
 #include "msm-pcm-routing-v2.h"
 #include "msm-pcm-routing-devdep.h"
 #include "msm-qti-pp-config.h"
@@ -90,6 +90,25 @@ static const char * const mad_audio_mux_text[] = {
 	SLIMBUS_3_TX_TEXT, SLIMBUS_4_TX_TEXT, SLIMBUS_5_TX_TEXT,
 	TERT_MI2S_TX_TEXT
 };
+
+
+#ifdef VENDOR_EDIT			
+ /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for quat i2s */
+#define INT_RX_VOL_MAX_STEPS 0x2000
+#define INT_RX_VOL_GAIN 0x2000
+static int msm_route_afe_pri_mi2s_vol_control= 0x2000;
+static int msm_route_afe_qua_mi2s_vol_control= 0x2000;
+
+static const DECLARE_TLV_DB_LINEAR(afe_mi2s_vol_gain, 0,
+                        INT_RX_VOL_MAX_STEPS);
+ /* add end by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for quat i2s */
+#endif
+
+#ifdef VENDOR_EDIT
+//#lifei@OnePlus.MultiMediaService, 2015/09/25 add set/get dsp interface
+ static int  dirac_port_id = -1;
+ static int  dirac_copp_id = -1;
+#endif/*VENDOR_EDIT*/	
 
 struct msm_pcm_route_bdai_pp_params {
 	u16 port_id; /* AFE port ID */
@@ -145,6 +164,14 @@ static void msm_pcm_routing_cfg_pp(int port_id, int copp_idx, int topology,
 		pr_debug("%s: DTS_EAGLE_COPP_TOPOLOGY_ID\n", __func__);
 		msm_dts_eagle_init_post(port_id, copp_idx);
 		break;
+#ifdef VENDOR_EDIT
+//#lifei@OnePlus.MultiMediaService, 2016/01/11 add set/get dsp interface
+    case ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DIRAC:
+        pr_debug("%s: ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DIRAC\n", __func__);
+        dirac_port_id = port_id;
+        dirac_copp_id = copp_idx;
+        break;
+#endif/*VENDOR_EDIT*/
 	default:
 		/* custom topology specific feature param handlers */
 		break;
@@ -325,6 +352,48 @@ static unsigned long session_copp_map[MSM_FRONTEND_DAI_MM_SIZE][2]
 static struct msm_pcm_routing_app_type_data app_type_cfg[MAX_APP_TYPES];
 static struct msm_pcm_stream_app_type_cfg
 			 fe_dai_app_type_cfg[MSM_FRONTEND_DAI_MM_SIZE];
+
+
+
+
+#ifdef VENDOR_EDIT			
+ /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for quat i2s */
+static int msm_routing_get_afe_pri_mi2s_vol_mixer(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = msm_route_afe_pri_mi2s_vol_control;
+	return 0;
+}
+
+static int msm_routing_set_afe_pri_mi2s_vol_mixer(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	afe_loopback_gain(AFE_PORT_ID_PRIMARY_MI2S_RX , ucontrol->value.integer.value[0]);
+
+	msm_route_afe_pri_mi2s_vol_control = ucontrol->value.integer.value[0];
+
+	return 0;
+}
+
+static int msm_routing_get_afe_qua_mi2s_vol_mixer(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = msm_route_afe_qua_mi2s_vol_control;
+	return 0;
+}
+
+static int msm_routing_set_afe_qua_mi2s_vol_mixer(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	afe_loopback_gain(AFE_PORT_ID_QUATERNARY_MI2S_TX , ucontrol->value.integer.value[0]);
+
+	msm_route_afe_qua_mi2s_vol_control = ucontrol->value.integer.value[0];
+
+	return 0;
+}
+ /* add end by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
+#endif
+
 
 /* The caller of this should aqcuire routing lock */
 void msm_pcm_routing_get_bedai_info(int be_idx,
@@ -721,6 +790,7 @@ int msm_pcm_routing_reg_phy_stream(int fedai_id, int perf_mode,
 	struct route_payload payload;
 	u32 channels, sample_rate;
 	uint16_t bits_per_sample = 16;
+    pr_debug("%s\n", __func__);
 
 	if (fedai_id > MSM_FRONTEND_DAI_MM_MAX_ID) {
 		/* bad ID assigned in machine driver */
@@ -1599,6 +1669,19 @@ static int msm_routing_ec_ref_rx_put(struct snd_kcontrol *kcontrol,
 		msm_route_ec_ref_rx = 7;
 		ec_ref_port_id = AFE_PORT_ID_SECONDARY_MI2S_RX;
 		break;
+#ifdef VENDOR_EDIT
+ /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for quat i2s */
+	case 9:
+		msm_route_ec_ref_rx = 11;
+		ec_ref_port_id = AFE_PORT_ID_TERTIARY_MI2S_RX;
+		break;
+	case 10:
+    /*zhiguang.su@MultiMedia.AudioDrv on 2015-04-28,add break.*/
+	msm_route_ec_ref_rx = 12;
+	ec_ref_port_id = AFE_PORT_ID_QUATERNARY_MI2S_RX;
+    break;
+     /* add end by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for quat i2s */
+#endif
 	default:
 		msm_route_ec_ref_rx = 0; /* NONE */
 		pr_err("%s EC ref rx %ld not valid\n",
@@ -1712,9 +1795,20 @@ static const struct snd_kcontrol_new msm_snd_controls[] = {
 
 static const char *const ec_ref_rx[] = { "None", "SLIM_RX", "I2S_RX",
 	"PRI_MI2S_TX", "SEC_MI2S_TX",
-	"TERT_MI2S_TX", "QUAT_MI2S_TX", "SEC_I2S_RX", "PROXY_RX"};
+#ifdef VENDOR_EDIT			
+ /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for quat i2s */
+	"TERT_MI2S_TX", "QUAT_MI2S_TX", "SEC_I2S_RX", "PROXY_RX",
+	"TERT_MI2S_RX", "QUAT_MI2S_RX"};
+ /* add end by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for quat i2s */
+ #endif
 static const struct soc_enum msm_route_ec_ref_rx_enum[] = {
+#ifndef VENDOR_EDIT			
 	SOC_ENUM_SINGLE_EXT(9, ec_ref_rx),
+#else
+	/* modified begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for quat i2s */
+	SOC_ENUM_SINGLE_EXT(11, ec_ref_rx),
+	/* modified end by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for quat i2s */	
+#endif	
 };
 
 static const struct snd_kcontrol_new ext_ec_ref_mux_ul1 =
@@ -2771,6 +2865,12 @@ static const struct snd_kcontrol_new mmul5_mixer_controls[] = {
 	SOC_SINGLE_EXT("TERT_MI2S_TX", MSM_BACKEND_DAI_TERTIARY_MI2S_TX,
 	MSM_FRONTEND_DAI_MULTIMEDIA5, 1, 0, msm_routing_get_audio_mixer,
 	msm_routing_put_audio_mixer),
+#ifdef VENDOR_EDIT
+	 /*zhiguang.su@MultiMedia.AudioDrv on 2015-04-28,add necessary route.*/
+	SOC_SINGLE_EXT("QUAT_MI2S_TX", MSM_BACKEND_DAI_QUATERNARY_MI2S_TX,
+	MSM_FRONTEND_DAI_MULTIMEDIA5, 1, 0, msm_routing_get_audio_mixer,
+	msm_routing_put_audio_mixer),
+#endif
 };
 
 static const struct snd_kcontrol_new mmul6_mixer_controls[] = {
@@ -3356,6 +3456,12 @@ static const struct snd_kcontrol_new tx_voip_mixer_controls[] = {
 	SOC_SINGLE_EXT("TERT_MI2S_TX_Voip", MSM_BACKEND_DAI_TERTIARY_MI2S_TX,
 	MSM_FRONTEND_DAI_VOIP, 1, 0, msm_routing_get_voice_mixer,
 	msm_routing_put_voice_mixer),
+#ifdef VENDOR_EDIT
+    /*zhiguang.su@MultiMedia.AudioDrv on 2015-04-28,add necessary route.*/
+	SOC_SINGLE_EXT("QUAT_MI2S_TX_Voip", MSM_BACKEND_DAI_QUATERNARY_MI2S_TX,
+	MSM_FRONTEND_DAI_VOIP, 1, 0, msm_routing_get_voice_mixer,
+	msm_routing_put_voice_mixer),
+#endif
 };
 
 static const struct snd_kcontrol_new tx_voice_stub_mixer_controls[] = {
@@ -3517,6 +3623,22 @@ static const struct snd_kcontrol_new sbus_0_rx_port_mixer_controls[] = {
 	SOC_SINGLE_EXT("INTERNAL_BT_SCO_TX", MSM_BACKEND_DAI_SLIMBUS_0_RX,
 	MSM_BACKEND_DAI_INT_BT_SCO_TX, 1, 0, msm_routing_get_port_mixer,
 	msm_routing_put_port_mixer),
+#ifdef VENDOR_EDIT				
+	 /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
+	SOC_SINGLE_EXT("PRI_MI2S_RX", MSM_BACKEND_DAI_SLIMBUS_0_RX,
+	MSM_BACKEND_DAI_PRI_MI2S_RX, 1, 0, msm_routing_get_port_mixer,
+	msm_routing_put_port_mixer),
+	SOC_SINGLE_EXT("SEC_MI2S_RX", MSM_BACKEND_DAI_SLIMBUS_0_RX,
+	MSM_BACKEND_DAI_SECONDARY_MI2S_RX, 1, 0, msm_routing_get_port_mixer,
+	msm_routing_put_port_mixer),
+	SOC_SINGLE_EXT("TERT_MI2S_RX", MSM_BACKEND_DAI_SLIMBUS_0_RX,
+	MSM_BACKEND_DAI_TERTIARY_MI2S_RX, 1, 0, msm_routing_get_port_mixer,
+	msm_routing_put_port_mixer),
+	SOC_SINGLE_EXT("QUAT_MI2S_RX", MSM_BACKEND_DAI_SLIMBUS_0_RX,
+	MSM_BACKEND_DAI_QUATERNARY_MI2S_RX, 1, 0, msm_routing_get_port_mixer,
+	msm_routing_put_port_mixer),	
+	 /* add end by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
+#endif
 };
 
 static const struct snd_kcontrol_new aux_pcm_rx_port_mixer_controls[] = {
@@ -3649,7 +3771,37 @@ static const struct snd_kcontrol_new quat_mi2s_rx_port_mixer_controls[] = {
 	SOC_SINGLE_EXT("INTERNAL_FM_TX", MSM_BACKEND_DAI_QUATERNARY_MI2S_RX,
 	MSM_BACKEND_DAI_INT_FM_TX, 1, 0, msm_routing_get_port_mixer,
 	msm_routing_put_port_mixer),
+	
+#ifdef VENDOR_EDIT					
+ /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s control*/
+	SOC_SINGLE_EXT("SLIM_0_TX", MSM_BACKEND_DAI_QUATERNARY_MI2S_RX,
+	MSM_BACKEND_DAI_SLIMBUS_0_TX, 1, 0, msm_routing_get_port_mixer,
+	msm_routing_put_port_mixer),
+	SOC_SINGLE_EXT("QUAT_MI2S_TX", MSM_BACKEND_DAI_QUATERNARY_MI2S_RX,
+	MSM_BACKEND_DAI_QUATERNARY_MI2S_TX, 1, 0, msm_routing_get_port_mixer,
+	msm_routing_put_port_mixer),	
+ /* add end by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
+#endif	
 };
+
+#ifdef VENDOR_EDIT				
+ /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s control*/
+static const struct snd_kcontrol_new tert_mi2s_rx_port_mixer_controls[] = {
+	SOC_SINGLE_EXT("PRI_MI2S_TX", MSM_BACKEND_DAI_TERTIARY_MI2S_RX,
+	MSM_BACKEND_DAI_PRI_MI2S_TX, 1, 0, msm_routing_get_port_mixer,
+	msm_routing_put_port_mixer),
+	SOC_SINGLE_EXT("TERT_MI2S_TX", MSM_BACKEND_DAI_TERTIARY_MI2S_RX,
+	MSM_BACKEND_DAI_TERTIARY_MI2S_TX, 1, 0, msm_routing_get_port_mixer,
+	msm_routing_put_port_mixer),
+	SOC_SINGLE_EXT("SLIM_0_TX", MSM_BACKEND_DAI_TERTIARY_MI2S_RX,
+	MSM_BACKEND_DAI_SLIMBUS_0_TX, 1, 0, msm_routing_get_port_mixer,
+	msm_routing_put_port_mixer),
+	SOC_SINGLE_EXT("QUAT_MI2S_TX", MSM_BACKEND_DAI_TERTIARY_MI2S_RX,
+	MSM_BACKEND_DAI_QUATERNARY_MI2S_TX, 1, 0, msm_routing_get_port_mixer,
+	msm_routing_put_port_mixer),
+};
+ /* add end by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
+#endif
 
 static const struct snd_kcontrol_new mmul3_mixer_controls[] = {
 	SOC_SINGLE_EXT("SLIM_0_TX", MSM_BACKEND_DAI_SLIMBUS_0_TX,
@@ -3957,6 +4109,100 @@ static const struct snd_kcontrol_new use_ds1_or_ds2_controls[] = {
 	msm_routing_put_use_ds1_or_ds2_control),
 };
 
+#ifdef VENDOR_EDIT
+//#lifei@OnePlus.MultiMediaService, 2015/09/25 add set/get dsp interface
+static int msm_routing_get_dirac_enable_param_control(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol) {
+	/* not used */
+	return 0;
+}
+
+#define AUDIO_DIRAC_MODULEID  0x00012D00
+#define DIRAC_PARAM_HD_ENABLE  0x00012D03
+#define DIRAC_PARAM_HEADSET  0x00012D04
+
+static int msm_routing_put_dirac_enable_param_control(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol) {
+	int ret = 0;
+	int enable = ucontrol->value.integer.value[0];
+	pr_debug("%s: enable = %d , dirac_port_id = %d, dirac_copp_id = %d\n", __func__,enable,dirac_port_id,dirac_copp_id);
+	if ((enable < 0) || (enable > 1)) {
+		pr_err(" %s Invalid arguments", __func__);
+		ret = -EINVAL;
+		goto done;
+	}
+
+	mutex_lock(&routing_lock);
+    if(dirac_port_id == -1){
+       dirac_port_id = SLIMBUS_0_RX;
+    }
+	if(dirac_copp_id == -1){
+       dirac_copp_id = 0;
+    }
+	ret = adm_set_dirac_enable_params(dirac_port_id, AUDIO_DIRAC_MODULEID,
+                dirac_copp_id,
+				DIRAC_PARAM_HD_ENABLE,
+				enable);
+	mutex_unlock(&routing_lock);
+
+	if (ret != 0) {
+		pr_err("%s: set parameters failed\n", __func__);
+		return -EINVAL;
+	}
+
+done:
+	return ret;
+}
+
+static int msm_routing_get_dirac_headset_param_control(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol) {
+	/* not used */
+	return 0;
+}
+
+static int msm_routing_put_dirac_headset_param_control(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol) {
+	int ret = 0;
+	int Selectenable = ucontrol->value.integer.value[0];
+	pr_debug("%s: Selectenable = %d , dirac_port_id = %d, dirac_copp_id = %d\n", __func__,Selectenable,dirac_port_id,dirac_copp_id);
+	if ((Selectenable < 0) || (Selectenable > 5)) {
+		pr_err(" %s Invalid arguments", __func__);
+		ret = -EINVAL;
+		goto done;
+	}
+
+	mutex_lock(&routing_lock);
+	if(dirac_port_id == -1){
+       dirac_port_id = SLIMBUS_0_RX;
+    }
+	if(dirac_copp_id == -1){
+       dirac_copp_id = 0;
+    }
+	ret = adm_set_dirac_enable_params(dirac_port_id, AUDIO_DIRAC_MODULEID,
+                dirac_copp_id,
+				DIRAC_PARAM_HEADSET,
+				Selectenable);
+	mutex_unlock(&routing_lock);
+	if (ret != 0) {
+		pr_err("%s: set parameters failed\n", __func__);
+		return -EINVAL;
+	}
+
+done:
+	return ret;
+}
+
+
+static const struct snd_kcontrol_new set_dirac_enable_param_to_set_controls[] = {
+    SOC_SINGLE_EXT("SetDirac Enable", SND_SOC_NOPM ,
+	               0, 1, 0, msm_routing_get_dirac_enable_param_control,
+	               msm_routing_put_dirac_enable_param_control),
+	SOC_SINGLE_EXT("Select Dirac Headset", SND_SOC_NOPM ,
+	               0, 4, 0, msm_routing_get_dirac_headset_param_control,
+	               msm_routing_put_dirac_headset_param_control),	
+};
+#endif/*VENDOR_EDIT*/
+
 int msm_routing_get_rms_value_control(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol) {
 	int rc = 0;
@@ -4237,9 +4483,18 @@ static const struct snd_soc_dapm_widget msm_qdsp6_widgets[] = {
 		0, 0, 0, 0),
 	SND_SOC_DAPM_AIF_IN("DTMF_DL_HL", "DTMF_RX_HOSTLESS Playback",
 		0, 0, 0, 0),
-	SND_SOC_DAPM_AIF_OUT("QUAT_MI2S_UL_HL",
-		"Quaternary MI2S_TX Hostless Capture",
+
+#ifdef VENDOR_EDIT						
+ /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
+	SND_SOC_DAPM_AIF_OUT("QUAT_MI2S_UL_HL", "QUAT_MI2S_HOSTLESS Capture",
 		0, 0, 0, 0),
+	SND_SOC_DAPM_AIF_OUT("TERT_MI2S_UL_HL", "TERT_MI2S_HOSTLESS Capture",
+		0, 0, 0, 0),
+	SND_SOC_DAPM_AIF_IN("QUAT_MI2S_DL_HL", "QUAT_MI2S_HOSTLESS Playback",
+		0, 0, 0, 0),
+	SND_SOC_DAPM_AIF_IN("TERT_MI2S_DL_HL", "TERT_MI2S_HOSTLESS Playback",
+	0, 0, 0, 0),
+#endif
 
 	/* LSM */
 	SND_SOC_DAPM_AIF_OUT("LSM1_UL_HL", "Listen 1 Audio Service Capture",
@@ -4556,6 +4811,14 @@ static const struct snd_soc_dapm_widget msm_qdsp6_widgets[] = {
 	SND_SOC_DAPM_MIXER("QUAT_MI2S_RX Port Mixer", SND_SOC_NOPM, 0, 0,
 	quat_mi2s_rx_port_mixer_controls,
 	ARRAY_SIZE(quat_mi2s_rx_port_mixer_controls)),
+
+#ifdef VENDOR_EDIT						
+ /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s control*/
+	SND_SOC_DAPM_MIXER("TERT_MI2S_RX Port Mixer", SND_SOC_NOPM, 0, 0,
+	tert_mi2s_rx_port_mixer_controls,
+	ARRAY_SIZE(tert_mi2s_rx_port_mixer_controls)),
+ /* add end by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
+#endif
 	SND_SOC_DAPM_MIXER("QCHAT_Tx Mixer",
 	SND_SOC_NOPM, 0, 0, tx_qchat_mixer_controls,
 	ARRAY_SIZE(tx_qchat_mixer_controls)),
@@ -4585,6 +4848,22 @@ static const struct snd_soc_dapm_widget msm_qdsp6_widgets[] = {
 	SND_SOC_DAPM_MUX("AUDIO_REF_EC_UL9 MUX", SND_SOC_NOPM, 0, 0,
 		&ext_ec_ref_mux_ul9),
 };
+
+#ifdef VENDOR_EDIT						
+ /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s control*/
+static const struct snd_kcontrol_new afe_pri_mi2s_vol_mixer_controls[] = {
+	SOC_SINGLE_EXT_TLV("PRI_MI2S_RX Volume", SND_SOC_NOPM, 0,
+	INT_RX_VOL_GAIN, 0, msm_routing_get_afe_pri_mi2s_vol_mixer,
+	msm_routing_set_afe_pri_mi2s_vol_mixer, afe_mi2s_vol_gain),
+};
+
+static const struct snd_kcontrol_new afe_qua_mi2s_vol_mixer_controls[] = {
+	SOC_SINGLE_EXT_TLV("QUA_MI2S_RX Volume", SND_SOC_NOPM, 0,
+	INT_RX_VOL_GAIN, 0, msm_routing_get_afe_qua_mi2s_vol_mixer,
+	msm_routing_set_afe_qua_mi2s_vol_mixer, afe_mi2s_vol_gain),
+};
+ /* add end by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
+#endif
 
 static const struct snd_soc_dapm_route intercon[] = {
 	{"PRI_RX Audio Mixer", "MultiMedia1", "MM_DL1"},
@@ -4812,6 +5091,10 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"MultiMedia5 Mixer", "MI2S_TX", "MI2S_TX"},
 	{"MultiMedia1 Mixer", "QUAT_MI2S_TX", "QUAT_MI2S_TX"},
 	{"MultiMedia2 Mixer", "QUAT_MI2S_TX", "QUAT_MI2S_TX"},
+#ifdef VENDOR_EDIT
+/*zhiguang.su@MultiMedia.AudioDrv on 2015-04-28,add necessary route.*/
+	{"MultiMedia5 Mixer", "QUAT_MI2S_TX", "QUAT_MI2S_TX"},
+#endif
 	{"MultiMedia1 Mixer", "TERT_MI2S_TX", "TERT_MI2S_TX"},
 	{"MultiMedia1 Mixer", "SLIM_0_TX", "SLIMBUS_0_TX"},
 	{"MultiMedia1 Mixer", "AUX_PCM_UL_TX", "AUX_PCM_TX"},
@@ -5123,6 +5406,12 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"MM_UL6", NULL, "AUDIO_REF_EC_UL6 MUX"},
 	{"MM_UL8", NULL, "AUDIO_REF_EC_UL8 MUX"},
 	{"MM_UL9", NULL, "AUDIO_REF_EC_UL9 MUX"},
+	
+#ifdef VENDOR_EDIT
+    /*zhiguang.su@MultiMedia.AudioDrv on 2015-04-28,add necessary route.*/
+	{"VOIP_UL", NULL, "AUDIO_REF_EC_UL1 MUX"},
+	{"VOIP_UL", NULL, "AUDIO_REF_EC_UL5 MUX"},
+#endif
 
 	{"Voice_Tx Mixer", "PRI_TX_Voice", "PRI_I2S_TX"},
 	{"Voice_Tx Mixer", "PRI_MI2S_TX_Voice", "PRI_MI2S_TX"},
@@ -5171,6 +5460,12 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"Voip_Tx Mixer", "PRI_TX_Voip", "PRI_I2S_TX"},
 	{"Voip_Tx Mixer", "MI2S_TX_Voip", "MI2S_TX"},
 	{"Voip_Tx Mixer", "TERT_MI2S_TX_Voip", "TERT_MI2S_TX"},
+
+#ifdef VENDOR_EDIT
+    /*zhiguang.su@MultiMedia.AudioDrv on 2015-04-28,add necessary route.*/
+	{"Voip_Tx Mixer", "QUAT_MI2S_TX_Voip", "QUAT_MI2S_TX"},
+#endif
+	
 	{"Voip_Tx Mixer", "SLIM_0_TX_Voip", "SLIMBUS_0_TX"},
 	{"Voip_Tx Mixer", "INTERNAL_BT_SCO_TX_Voip", "INT_BT_SCO_TX"},
 	{"Voip_Tx Mixer", "AFE_PCM_TX_Voip", "PCM_TX"},
@@ -5284,8 +5579,12 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"PCM_RX", NULL, "PCM_RX_DL_HL"},
 	{"PRI_MI2S_RX_DL_HL", "Switch", "PRI_MI2S_DL_HL"},
 	{"PRI_MI2S_RX", NULL, "PRI_MI2S_RX_DL_HL"},
-
+#ifndef VENDOR_EDIT
+ /* add begin by jirui.kang@MultiMedia.AudioDrv on 2015-03-24,modify for loopback test */
 	{"QUAT_MI2S_RX_DL_HL", "Switch", "QUAT_MI2S_DL_HL"},
+#else
+	{"QUAT_MI2S_RX_DL_HL", "Switch", "SLIM0_DL_HL"},
+#endif
 	{"QUAT_MI2S_RX", NULL, "QUAT_MI2S_RX_DL_HL"},
 	{"MI2S_UL_HL", NULL, "TERT_MI2S_TX"},
 	{"TERT_MI2S_UL_HL", NULL, "TERT_MI2S_TX"},
@@ -5294,7 +5593,12 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"SEC_MI2S_RX", NULL, "SEC_MI2S_DL_HL"},
 	{"PRI_MI2S_RX", NULL, "PRI_MI2S_DL_HL"},
 	{"QUAT_MI2S_UL_HL", NULL, "QUAT_MI2S_TX"},
-
+#ifdef VENDOR_EDIT							
+ /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
+	{"QUAT_MI2S_RX", NULL, "QUAT_MI2S_DL_HL"},
+	{"TERT_MI2S_RX", NULL, "TERT_MI2S_DL_HL"},
+ /* add end by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
+#endif
 	{"SLIMBUS_0_RX Port Mixer", "INTERNAL_FM_TX", "INT_FM_TX"},
 	{"SLIMBUS_0_RX Port Mixer", "SLIM_0_TX", "SLIMBUS_0_TX"},
 	{"SLIMBUS_0_RX Port Mixer", "SLIM_1_TX", "SLIMBUS_1_TX"},
@@ -5304,6 +5608,16 @@ static const struct snd_soc_dapm_route intercon[] = {
 	{"SLIMBUS_0_RX Port Mixer", "PRI_MI2S_TX", "PRI_MI2S_TX"},
 	{"SLIMBUS_0_RX Port Mixer", "QUAT_MI2S_TX", "QUAT_MI2S_TX"},
 	{"SLIMBUS_0_RX Port Mixer", "INTERNAL_BT_SCO_TX", "INT_BT_SCO_TX"},
+
+#ifdef VENDOR_EDIT								
+ /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
+	{"SLIMBUS_0_RX Port Mixer", "PRI_MI2S_RX", "PRI_MI2S_RX"},
+	{"SLIMBUS_0_RX Port Mixer", "SEC_MI2S_RX", "SEC_MI2S_RX"},
+	{"SLIMBUS_0_RX Port Mixer", "TERT_MI2S_RX", "TERT_MI2S_RX"},
+	{"SLIMBUS_0_RX Port Mixer", "QUAT_MI2S_RX", "QUAT_MI2S_RX"},
+ /* add end by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
+#endif
+
 	{"SLIMBUS_0_RX", NULL, "SLIMBUS_0_RX Port Mixer"},
 	{"AFE_PCM_RX Port Mixer", "INTERNAL_FM_TX", "INT_FM_TX"},
 	{"AFE_PCM_RX Port Mixer", "SLIM_1_TX", "SLIMBUS_1_TX"},
@@ -5409,8 +5723,21 @@ static const struct snd_soc_dapm_route intercon[] = {
 
 	{"QUAT_MI2S_RX Port Mixer", "PRI_MI2S_TX", "PRI_MI2S_TX"},
 	{"QUAT_MI2S_RX Port Mixer", "INTERNAL_FM_TX", "INT_FM_TX"},
-	{"QUAT_MI2S_RX", NULL, "QUAT_MI2S_RX Port Mixer"},
 
+#ifdef VENDOR_EDIT									
+ /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
+	{"QUAT_MI2S_RX Port Mixer", "TERT_MI2S_TX", "TERT_MI2S_TX"},
+	{"QUAT_MI2S_RX Port Mixer", "QUAT_MI2S_TX", "QUAT_MI2S_TX"},
+	{"QUAT_MI2S_RX Port Mixer", "SLIM_0_TX", "SLIMBUS_0_TX"},
+	{"QUAT_MI2S_RX", NULL, "QUAT_MI2S_RX Port Mixer"},
+	
+	{"TERT_MI2S_RX Port Mixer", "PRI_MI2S_TX", "PRI_MI2S_TX"},
+	{"TERT_MI2S_RX Port Mixer", "TERT_MI2S_TX", "TERT_MI2S_TX"},
+	{"TERT_MI2S_RX Port Mixer", "QUAT_MI2S_TX", "QUAT_MI2S_TX"},
+	{"TERT_MI2S_RX Port Mixer", "SLIM_0_TX", "SLIMBUS_0_TX"},
+	{"TERT_MI2S_RX", NULL, "TERT_MI2S_RX Port Mixer"},
+ /* add end by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
+#endif
 	/* Backend Enablement */
 
 	{"BE_OUT", NULL, "PRI_I2S_RX"},
@@ -5499,6 +5826,7 @@ static int msm_pcm_routing_close(struct snd_pcm_substream *substream)
 	int i, session_type, path_type, topology;
 	struct msm_pcm_routing_bdai_data *bedai;
 	struct msm_pcm_routing_fdai_data *fdai;
+    pr_debug("%s\n", __func__);
 
 	if (be_id >= MSM_BACKEND_DAI_MAX) {
 		pr_err("%s: unexpected be_id %d\n", __func__, be_id);
@@ -5560,6 +5888,7 @@ static int msm_pcm_routing_prepare(struct snd_pcm_substream *substream)
 	bool playback, capture;
 	uint16_t bits_per_sample = 16;
 	struct msm_pcm_routing_fdai_data *fdai;
+    pr_debug("%s\n", __func__);
 
 	if (be_id >= MSM_BACKEND_DAI_MAX) {
 		pr_err("%s: unexpected be_id %d\n", __func__, be_id);
@@ -5887,6 +6216,26 @@ static int msm_routing_probe(struct snd_soc_platform *platform)
 	snd_soc_add_platform_controls(platform,
 				device_pp_params_mixer_controls,
 				ARRAY_SIZE(device_pp_params_mixer_controls));
+#ifdef VENDOR_EDIT
+ /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for quat i2s control*/
+	snd_soc_add_platform_controls(platform,
+			afe_pri_mi2s_vol_mixer_controls,
+			ARRAY_SIZE(afe_pri_mi2s_vol_mixer_controls));
+
+
+	snd_soc_add_platform_controls(platform,
+			afe_qua_mi2s_vol_mixer_controls,
+			ARRAY_SIZE(afe_qua_mi2s_vol_mixer_controls));
+ /* add end by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
+#endif
+
+#ifdef VENDOR_EDIT
+//#lifei@OnePlus.MultiMediaService, 2015/09/25 add set/get dsp interface
+    snd_soc_add_platform_controls(platform,
+				set_dirac_enable_param_to_set_controls,
+			ARRAY_SIZE(set_dirac_enable_param_to_set_controls));
+
+#endif/*VENDOR_EDIT*/
 
 	for (i = 0; i < ARRAY_SIZE(msm_snd_controls); i++) {
 		kctl = snd_ctl_new1(&msm_snd_controls[i], &channel_mux);

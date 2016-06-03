@@ -4221,6 +4221,34 @@ unlock:
 }
 EXPORT_SYMBOL_GPL(regulator_suspend_finish);
 
+#ifdef VENDOR_EDIT
+static uint need_dump_regulator;
+module_param(need_dump_regulator, uint, 0644);
+MODULE_PARM_DESC(need_dump_regulator, "need_dump_regulator");
+
+void regulator_suspend_dump(void)
+{
+	struct regulator_dev *rdev;
+	struct regulator *regulator;
+
+	if(!need_dump_regulator)
+		return;
+	//mutex_lock(&regulator_list_mutex);
+	list_for_each_entry(rdev, &regulator_list, list) {
+		//mutex_lock(&rdev->mutex);
+		pr_info("Supply_name: %s ===>%s\n",
+			rdev_get_name(rdev), _regulator_is_enabled(rdev)?"enable":"disable");
+		list_for_each_entry(regulator, &rdev->consumer_list, list){
+			pr_info("supply to %s [%s]\n",regulator->supply_name, regulator->enabled?"Y":"N");
+		}
+		pr_info("=======================");
+		//mutex_unlock(&rdev->mutex);
+	}
+	//mutex_unlock(&regulator_list_mutex);
+}
+EXPORT_SYMBOL_GPL(regulator_suspend_dump);
+#endif /* VENDOR_EDIT */
+
 /**
  * regulator_has_full_constraints - the system has fully specified constraints
  *

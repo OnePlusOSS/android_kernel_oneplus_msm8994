@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
- * Author: Brian Swetland <swetland@google.com>
+ * Author: Brian Swetland  <swetland@google.com>
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and

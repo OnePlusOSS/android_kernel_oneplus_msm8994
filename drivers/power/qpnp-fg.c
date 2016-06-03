@@ -70,13 +70,19 @@
 
 #define QPNP_FG_DEV_NAME "qcom,qpnp-fg"
 #define MEM_IF_TIMEOUT_MS	5000
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 #define BUCKET_COUNT		8
 #define BUCKET_SOC_PCT		(256 / BUCKET_COUNT)
+#endif
 
 #define BCL_MA_TO_ADC(_current, _adc_val) {		\
 	_adc_val = (u8)((_current) * 100 / 976);	\
 }
-
+#ifdef  VENDOR_EDIT //before battery profile init done,do not allow  soft AICL
+int  load_battery_profile_done;
+int load_battery_profile_done_allow_check_temp_set_current;
+#endif
 /* Debug Flag Definitions */
 enum {
 	FG_SPMI_DEBUG_WRITES		= BIT(0), /* Show SPMI writes */
@@ -113,6 +119,10 @@ struct fg_mem_data {
 };
 
 struct fg_learning_data {
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+	int			prev_status;
+#endif
 	int64_t			cc_uah;
 	int64_t			learned_cc_uah;
 	bool			active;
@@ -141,6 +151,8 @@ struct fg_rslow_data {
 	struct mutex		lock;
 };
 
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 struct fg_cyc_ctr_data {
 	bool			en;
 	bool			started[BUCKET_COUNT];
@@ -149,6 +161,7 @@ struct fg_cyc_ctr_data {
 	int			id;
 	struct mutex		lock;
 };
+#endif
 
 /* FG_MEMIF setting index */
 enum fg_mem_setting_index {
@@ -188,7 +201,28 @@ enum fg_mem_data_index {
 	FG_DATA_BATT_ID_INFO,
 	FG_DATA_MAX,
 };
-
+#ifdef VENDOR_EDIT
+typedef enum{
+		/*! Battery is cold 			  */
+		CV_BATTERY_TEMP_REGION__COLD,
+		/*! Battery is little cold				 */
+		CV_BATTERY_TEMP_REGION_LITTLE__COLD,
+		/*! Battery is cool 			  */
+		CV_BATTERY_TEMP_REGION__COOL,
+		 /*! Battery is little cool 			  */
+		CV_BATTERY_TEMP_REGION__LITTLE_COOL,
+		/*! Battery is pre normal			  */
+		CV_BATTERY_TEMP_REGION__PRE_NORMAL,
+		/*! Battery is normal			  */
+		CV_BATTERY_TEMP_REGION__NORMAL,
+		/*! Battery is warm 			  */
+		CV_BATTERY_TEMP_REGION__WARM,
+		/*! Battery is hot				  */
+		CV_BATTERY_TEMP_REGION__HOT,
+		/*! Invalid battery temp region   */
+		CV_BATTERY_TEMP_REGION__INVALID,
+}chg_cv_battery_temp_region_type;
+#endif
 #define SETTING(_idx, _address, _offset, _value)	\
 	[FG_MEM_##_idx] = {				\
 		.address = _address,			\
@@ -198,10 +232,19 @@ enum fg_mem_data_index {
 
 static struct fg_mem_setting settings[FG_MEM_SETTING_MAX] = {
 	/*       ID                    Address, Offset, Value*/
+#ifdef VENDOR_EDIT
+/* yangfangbiao@oneplus.cn, 2015/03/11  Modify for PMI8994 charge*/
+
+	SETTING(SOFT_COLD,       0x454,   0,      -30),
+	SETTING(SOFT_HOT,        0x454,   1,      550),
+	SETTING(HARD_COLD,       0x454,   2,      -40),
+	SETTING(HARD_HOT,        0x454,   3,      560),
+#else
 	SETTING(SOFT_COLD,       0x454,   0,      100),
 	SETTING(SOFT_HOT,        0x454,   1,      400),
 	SETTING(HARD_COLD,       0x454,   2,      50),
 	SETTING(HARD_HOT,        0x454,   3,      450),
+#endif /*VENDOR_EDIT*/
 	SETTING(RESUME_SOC,      0x45C,   1,      0),
 	SETTING(BCL_LM_THRESHOLD, 0x47C,   2,      50),
 	SETTING(BCL_MH_THRESHOLD, 0x47C,   3,      752),
@@ -257,8 +300,12 @@ static char *fg_batt_type;
 module_param_named(
 	battery_type, fg_batt_type, charp, S_IRUSR | S_IWUSR
 );
-
+#ifdef VENDOR_EDIT
+static int fg_sram_update_period_ms =  6000;
+#else
 static int fg_sram_update_period_ms = 30000;
+#endif
+
 module_param_named(
 	sram_update_period_ms, fg_sram_update_period_ms, int, S_IRUSR | S_IWUSR
 );
@@ -375,9 +422,16 @@ struct fg_chip {
 	struct completion	sram_access_granted;
 	struct completion	sram_access_revoked;
 	struct completion	batt_id_avail;
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	struct completion	first_soc_done;
+#endif
 	struct power_supply	bms_psy;
 	struct mutex		rw_lock;
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+	struct mutex		cyc_ctr_lock;
+#endif
 	struct mutex		sysfs_restart_lock;
 	struct work_struct	batt_profile_init;
 	struct work_struct	dump_sram;
@@ -389,7 +443,10 @@ struct fg_chip {
 	struct work_struct	rslow_comp_work;
 	struct work_struct	init_work;
 	struct work_struct	sysfs_restart_work;
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	struct work_struct	charge_full_work;
+#endif
 	struct power_supply	*batt_psy;
 	struct power_supply	*usb_psy;
 	struct power_supply	*dc_psy;
@@ -400,26 +457,43 @@ struct fg_chip {
 	bool			first_profile_loaded;
 	struct fg_wakeup_source	update_temp_wakeup_source;
 	struct fg_wakeup_source	update_sram_wakeup_source;
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	bool			fg_restarting;
+#endif
 	bool			profile_loaded;
 	bool			use_otp_profile;
 	bool			battery_missing;
 	bool			power_supply_registered;
 	bool			sw_rbias_ctrl;
 	bool			use_thermal_coefficients;
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+	bool			cyc_ctr_en;
+	bool			cyc_ctr_started;
+#endif
 	bool			esr_strict_filter;
 	bool			soc_empty;
 	bool			charge_done;
 	bool			resume_soc_lowered;
 	bool			vbat_low_irq_enabled;
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	bool			charge_full;
 	bool			hold_soc_while_full;
+#endif
 	struct delayed_work	update_jeita_setting;
 	struct delayed_work	update_sram_data;
 	struct delayed_work	update_temp_work;
 	struct delayed_work	check_empty_work;
 	char			*batt_profile;
 	u8			thermal_coefficients[THERMAL_COEFF_N_BYTES];
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+	u16 		cycle_counter;
+	u32 		cyc_ctr_low_soc;
+	u32 		cyc_ctr_hi_soc;
+#endif
 	u32			cc_cv_threshold_mv;
 	unsigned int		batt_profile_len;
 	unsigned int		batt_max_voltage_uv;
@@ -427,6 +501,10 @@ struct fg_chip {
 	const char		*batt_psy_name;
 	unsigned long		last_sram_update_time;
 	unsigned long		last_temp_update_time;
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+	int 		cyc_ctr_freq;
+#endif
 	int64_t			ocv_coeffs[12];
 	int64_t			cutoff_voltage;
 	int			evaluation_current;
@@ -435,24 +513,41 @@ struct fg_chip {
 	int			nom_cap_uah;
 	int			actual_cap_uah;
 	int			status;
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	int			prev_status;
+#endif
 	int			health;
 	enum fg_batt_aging_mode	batt_aging_mode;
 	/* capacity learning */
 	struct fg_learning_data	learning_data;
 	struct alarm		fg_cap_learning_alarm;
 	struct work_struct	fg_cap_learning_work;
+	#ifdef VENDOR_EDIT
+	int saltate_counter;
+	int soc_pre;
+	int  batt_vol_pre;
+	bool  allow_get_real_fg_soc;
+	unsigned long		enter_suspend_time;
+	unsigned long		soc_continue_time;
+	#endif
 	/* rslow compensation */
 	struct fg_rslow_data	rslow_comp;
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	/* cycle counter */
 	struct fg_cyc_ctr_data	cyc_ctr;
+#endif
 	/* interleaved memory access */
 	u16			*offset;
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	bool			jeita_hysteresis_support;
 	bool			batt_hot;
 	bool			batt_cold;
 	int			cold_hysteresis;
 	int			hot_hysteresis;
+#endif
 };
 
 /* FG_MEMIF DEBUGFS structures */
@@ -521,7 +616,9 @@ static char *fg_supplicants[] = {
 	"bcl",
 	"fg_adc"
 };
-
+#ifdef VENDOR_EDIT
+static int get_sram_prop_now(struct fg_chip *chip, unsigned int type);
+#endif
 #define DEBUG_PRINT_BUFFER_SIZE 64
 static void fill_string(char *str, size_t str_len, u8 *buf, int buf_len)
 {
@@ -1179,6 +1276,260 @@ static bool fg_is_batt_empty(struct fg_chip *chip)
 	return (fg_soc_sts & SOC_EMPTY) != 0;
 }
 
+#ifdef VENDOR_EDIT
+#define SOC_SHUTDOWN_VALID_LIMITS				20
+#define CRITICAL_TIME							9 //9s
+#define ONE_MINUTE								60
+#define HALF_MINUTE								30
+#define FIVE_MINUTES							300
+#define TWO_POINT_FIVE_MINUTES					150
+#define TEN_MINUTES								600
+#define CAPACITY_SALTATE_COUNTER_60				30 //40	1min
+#define CAPACITY_SALTATE_COUNTER_95				70 //60	2.5min
+#define CAPACITY_SALTATE_COUNTER_FULL			200 //150//120 5min
+#define CAPACITY_SALTATE_COUNTER_CHARGING_TERM	30 //30 1min
+#define CAPACITY_SALTATE_COUNTER				4
+#define CAPACITY_SALTATE_COUNTER_NOT_CHARGING	24 //>=40sec
+#define LOW_BATTERY_PROTECT_VOLTAGE				3450 * 1000 //3.45V
+#define CAPACITY_CALIBRATE_TIME_60_PERCENT		40 //40s
+
+extern int get_charging_status(void);
+extern int fuelgauge_battery_temp_region_get(void);
+extern int load_soc(void);
+extern void backup_soc_ex(int soc);
+extern bool get_oem_charge_done_status(void);
+
+static int bound(int val, int min, int max)
+{
+	if (val < min)
+		return min;
+	if (val > max)
+		return max;
+
+	return val;
+}
+
+static bool is_batt_temp_ok(void)
+{
+	int temp_region;
+
+	temp_region = fuelgauge_battery_temp_region_get();
+
+	if (temp_region == CV_BATTERY_TEMP_REGION__LITTLE_COOL
+			|| temp_region == CV_BATTERY_TEMP_REGION__LITTLE_COOL
+			|| temp_region == CV_BATTERY_TEMP_REGION__NORMAL
+			|| temp_region == CV_BATTERY_TEMP_REGION__PRE_NORMAL) {
+		return true;
+	}
+
+	return false;
+}
+
+static int fg_soc_calibrate(struct fg_chip *di, int soc)
+{
+	union power_supply_propval ret = {0,};
+	int soc_load, soc_temp, counter_temp = 0;
+	bool temp_ok, chg_done;
+	bool allow_change = false;
+	bool force_change = false;
+	static int i = 0;
+	static int charging_status = 0;
+	static int charging_status_pre = 0;
+	unsigned int soc_calib;
+	static unsigned long soc_pre_time;
+	unsigned long soc_current_time, time_last;
+
+	/* FG may do not prepare soc ok, do not calibrate soc 3 times */
+	if(4 > i) {
+		i++;
+		if (4 != i)
+			return soc;
+
+		di->batt_psy = power_supply_get_by_name("battery");
+		if (!di->batt_psy) {
+			pr_err("batt psy not found\n");
+			return soc;
+		}
+
+		/* get the soc before last shutdown/reboot */
+		soc_load = load_soc();
+		pr_info("soc=%d, soc_load:%d\n", soc, soc_load);
+		if (soc_load == -1) {
+			pr_err("load_soc is invalid\n");
+			di->soc_pre = soc;
+		} else if (abs(soc - soc_load) > SOC_SHUTDOWN_VALID_LIMITS) {
+			pr_err("gap between load_soc and soc is over %d\n",
+					SOC_SHUTDOWN_VALID_LIMITS);
+			di->soc_pre = soc;
+		} else {
+			/* compare the soc and the last soc */
+			if(soc_load > soc + 3) {
+				pr_info("reduce soc because load soc is 3 more than soc\n");
+				di->soc_pre = soc_load -1;
+			} else {
+				di->soc_pre = soc_load;
+			}
+		}
+		/* store the soc when boot first time */
+		backup_soc_ex(di->soc_pre);
+		get_current_time(&soc_pre_time);
+	}
+
+	soc_temp = di->soc_pre;
+	if (!di->batt_psy) {
+		soc_calib = soc;
+		goto out;
+	}
+
+	temp_ok = is_batt_temp_ok();
+	chg_done = get_oem_charge_done_status();
+	ret.intval = get_charging_status();
+	di->batt_vol_pre = get_sram_prop_now(di, FG_DATA_VOLTAGE);
+	/*
+	 * when battery temperature is cool or normal, we disable
+	 * charge after charge done, in this case battery status
+	 * must deal with FULL
+	 */
+	if (temp_ok && chg_done)
+		ret.intval = POWER_SUPPLY_STATUS_FULL;
+	if (ret.intval == POWER_SUPPLY_STATUS_CHARGING
+			|| ret.intval == POWER_SUPPLY_STATUS_FULL)
+		charging_status = 1;
+	else
+		charging_status = 0;
+	if (charging_status ^ charging_status_pre) {
+		charging_status_pre = charging_status;
+		di->saltate_counter = 0;
+		get_current_time(&soc_pre_time);
+	}
+
+	get_current_time(&soc_current_time);
+	time_last = soc_current_time - soc_pre_time;
+	if (charging_status) { //is charging
+		if (ret.intval == POWER_SUPPLY_STATUS_FULL) {
+			soc_calib = di->soc_pre;
+			if (di->soc_pre < 100 && temp_ok) {
+				if (di->saltate_counter < CAPACITY_SALTATE_COUNTER_CHARGING_TERM) {
+					di->saltate_counter++;
+				} else {
+					soc_calib = di->soc_pre + 1;
+					di->saltate_counter = 0;
+				}
+			}
+		} else {
+			if (soc - di->soc_pre > 0) {
+				if (time_last < HALF_MINUTE)
+					return di->soc_pre;
+				else
+					soc_calib = di->soc_pre + 1;
+			} else if (soc < (di->soc_pre - 1)) {
+				di->saltate_counter++;
+				if (di->soc_pre == 100) {
+					counter_temp = CAPACITY_SALTATE_COUNTER_FULL; //t>=5min
+				} else if (di->soc_pre > 95) {
+					counter_temp = CAPACITY_SALTATE_COUNTER_95; //t>=2.5min
+				} else if (di->soc_pre > 60) {
+					counter_temp = CAPACITY_SALTATE_COUNTER_60; //t>=1min
+				} else {
+					if (time_last > CAPACITY_CALIBRATE_TIME_60_PERCENT
+							&& (soc - di->soc_pre) < 0)
+						counter_temp = 0;
+					else
+						counter_temp = CAPACITY_SALTATE_COUNTER_NOT_CHARGING; //t>=40sec
+				}
+				/*
+				 * when batt_vol is too low(and soc is jumping),
+				 * decrease faster to avoid dead battery shutdown
+				 */
+				if (di->batt_vol_pre <= LOW_BATTERY_PROTECT_VOLTAGE
+						&& di->batt_vol_pre > 2500 * 1000 && di->soc_pre <= 10) {
+					/* double check battery voltage */
+					di->batt_vol_pre = get_sram_prop_now(di, FG_DATA_VOLTAGE);
+					if (di->batt_vol_pre <= LOW_BATTERY_PROTECT_VOLTAGE
+							&& di->batt_vol_pre > 2500 * 1000) {
+						counter_temp = CAPACITY_SALTATE_COUNTER - 1; //about 9s
+					}
+				}
+
+				if ((di->saltate_counter < counter_temp)
+						|| (get_sram_prop_now(di, FG_DATA_CURRENT) < -200 * 1000))
+					/* if charge current > 200mA, do not allow soc down */
+					return di->soc_pre;
+				else
+					di->saltate_counter = 0;
+
+				soc_calib = di->soc_pre - 1;
+			} else if ((soc == 0 && soc < di->soc_pre ) && (di->soc_pre <= 2)) {
+				di->saltate_counter++;
+				if(time_last > CAPACITY_CALIBRATE_TIME_60_PERCENT && (soc - di->soc_pre) < 0)
+					counter_temp = 0;
+				else
+					counter_temp = CAPACITY_SALTATE_COUNTER_NOT_CHARGING; //t>=40sec
+
+				if (di->saltate_counter < counter_temp)
+					return di->soc_pre;
+				else
+					di->saltate_counter = 0;
+
+				soc_calib = di->soc_pre - 1;
+			} else {
+				soc_calib = di->soc_pre;
+			}
+		}
+	} else { //not charging
+		if ((abs(soc - di->soc_pre) >  0)) {
+			if ((di->soc_pre == 100 && time_last >= FIVE_MINUTES)
+					|| (di->soc_pre > 95 && time_last >= TWO_POINT_FIVE_MINUTES)
+					|| (di->soc_pre > 60 && time_last >= ONE_MINUTE)
+					|| (time_last > CAPACITY_CALIBRATE_TIME_60_PERCENT)) {
+				allow_change = true;
+			}
+		}
+
+		/*
+		 * when batt_vol is too low (and soc is jumping),
+		 * decrease capacity quickly to avoid dead battery shutdown
+		 */
+		if (di->batt_vol_pre <= LOW_BATTERY_PROTECT_VOLTAGE
+				&& di->batt_vol_pre > 2500 * 1000
+				&& di->soc_pre <= 10 && di->soc_pre > 0
+				&& time_last > CRITICAL_TIME) {
+			/* double check battery voltage */
+			di->batt_vol_pre = get_sram_prop_now(di, FG_DATA_VOLTAGE);
+			if (di->batt_vol_pre <= LOW_BATTERY_PROTECT_VOLTAGE
+					&& di->batt_vol_pre > 2500 * 1000) {
+				force_change = true;
+			}
+		}
+
+		if (!allow_change & !force_change)
+			return di->soc_pre;
+		else if ((allow_change && soc < di->soc_pre)
+				|| force_change)
+			soc_calib = di->soc_pre - 1;
+		else
+			soc_calib = di->soc_pre;
+	}
+
+out:
+	bound(soc_calib, 0, 100);
+	di->soc_pre = soc_calib;
+
+	if(soc_temp  !=  soc_calib) {
+		get_current_time(&soc_pre_time);
+		//store when soc changed
+		backup_soc_ex(soc_calib);
+		power_supply_changed(di->batt_psy);
+		pr_info("soc:%d, soc_calib:%d, vbat:%dmV, ibat:%dmA\n",
+				soc, soc_calib,
+				get_sram_prop_now(di, FG_DATA_VOLTAGE) / 1000,
+				get_sram_prop_now(di, FG_DATA_CURRENT) / 1000);
+	}
+
+	return soc_calib;
+}
+
+#else
 static int get_monotonic_soc_raw(struct fg_chip *chip)
 {
 	u8 cap[2];
@@ -1208,10 +1559,77 @@ static int get_monotonic_soc_raw(struct fg_chip *chip)
 		pr_info_ratelimited("raw: 0x%02x\n", cap[0]);
 	return cap[0];
 }
+#endif
 
 #define EMPTY_CAPACITY		0
 #define DEFAULT_CAPACITY	50
 #define MISSING_CAPACITY	100
+#ifdef VENDOR_EDIT
+static int get_prop_capacity(struct fg_chip *chip)
+{
+	u8 cap[2];
+	int rc, capacity = 0, tries = 0;
+
+	if (chip->battery_missing)
+		return MISSING_CAPACITY;
+	if (!chip->profile_loaded && !chip->use_otp_profile) {
+#ifdef VENDOR_EDIT /* modify to fix bug:SND-2282,*/
+		capacity=load_soc();
+		if(capacity >= 0)
+			return capacity;//report backup soc
+		else
+			return DEFAULT_CAPACITY;
+#else
+		return DEFAULT_CAPACITY;
+#endif
+	}
+	if (chip->soc_empty) {
+		if (fg_debug_mask & FG_POWER_SUPPLY)
+			pr_info_ratelimited("capacity: %d, EMPTY\n",
+				EMPTY_CAPACITY);
+#ifdef VENDOR_EDIT
+		capacity =0;
+		goto OEM_SOC_CALIBRATE;
+#else
+		return EMPTY_CAPACITY;
+#endif
+	}
+	while (tries < MAX_TRIES_SOC) {
+		rc = fg_read(chip, cap,
+				chip->soc_base + SOC_MONOTONIC_SOC, 2);
+		if (rc) {
+			pr_err("spmi read failed: addr=%03x, rc=%d\n",
+				chip->soc_base + SOC_MONOTONIC_SOC, rc);
+			return rc;
+		}
+
+		if (cap[0] == cap[1])
+			break;
+
+		tries++;
+	}
+
+	if (tries == MAX_TRIES_SOC) {
+		pr_err("shadow registers do not match\n");
+		return -EINVAL;
+	}
+
+	if (cap[0] > 0)
+		capacity = (cap[0] * 100 / FULL_PERCENT);
+
+	if (fg_debug_mask & FG_POWER_SUPPLY)
+		pr_info_ratelimited("capacity: %d, raw: 0x%02x\n",
+				capacity, cap[0]);
+#ifdef VENDOR_EDIT
+OEM_SOC_CALIBRATE:
+	if(chip->allow_get_real_fg_soc == false)
+	{
+		capacity =fg_soc_calibrate(chip, capacity);
+	}
+#endif
+	return capacity;
+}
+#else
 #define FULL_CAPACITY		100
 #define FULL_SOC_RAW		0xFF
 static int get_prop_capacity(struct fg_chip *chip)
@@ -1238,6 +1656,7 @@ static int get_prop_capacity(struct fg_chip *chip)
 	return DIV_ROUND_CLOSEST((msoc - 1) * (FULL_CAPACITY - 2),
 			FULL_SOC_RAW - 2) + 1;
 }
+#endif
 
 #define HIGH_BIAS	3
 #define MED_BIAS	BIT(1)
@@ -1248,6 +1667,25 @@ static u8 bias_ua[] = {
 	[LOW_BIAS] = 5,
 };
 
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+static int64_t get_batt_id(unsigned int battery_id_uv, u8 bid_info)
+{
+	u64 battery_id_ohm;
+	if (fg_debug_mask & FG_POWER_SUPPLY)
+		pr_info("qpnp-fg battery_id_uv= %d\n",battery_id_uv);
+
+	if (!(bid_info & 0x3) >= 1) {
+		pr_err("can't determine battery id %d\n", bid_info);
+		return -EINVAL;
+	}
+
+	battery_id_ohm = div_u64(battery_id_uv, bias_ua[bid_info & 0x3]);
+	if (fg_debug_mask & FG_POWER_SUPPLY)
+		pr_info("qpnp-fg battery_id_ohm= %lld\n",battery_id_ohm);
+	return battery_id_ohm;
+}
+#else
 static int64_t get_batt_id(unsigned int battery_id_uv, u8 bid_info)
 {
 	u64 battery_id_ohm;
@@ -1261,6 +1699,7 @@ static int64_t get_batt_id(unsigned int battery_id_uv, u8 bid_info)
 
 	return battery_id_ohm;
 }
+#endif
 
 #define DEFAULT_TEMP_DEGC	250
 static int get_sram_prop_now(struct fg_chip *chip, unsigned int type)
@@ -1474,8 +1913,11 @@ static void update_sram_data(struct fg_chip *chip, int *resched_ms)
 	int battid_valid = fg_is_batt_id_valid(chip);
 
 	fg_stay_awake(&chip->update_sram_wakeup_source);
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	if (chip->fg_restarting)
 		goto resched;
+#endif
 
 	fg_mem_lock(chip);
 	for (i = 1; i < FG_DATA_MAX; i++) {
@@ -1521,8 +1963,13 @@ static void update_sram_data(struct fg_chip *chip, int *resched_ms)
 				fg_data[i].value = reg[0];
 			break;
 		case FG_DATA_BATT_SOC:
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+			fg_data[i].value = temp * 10000 / FULL_PERCENT_3B;
+#else
 			fg_data[i].value = div64_s64((temp * 10000),
 							FULL_PERCENT_3B);
+#endif
 			break;
 		case FG_DATA_CC_CHARGE:
 			temp = twos_compliment_extend(temp, fg_data[i].len);
@@ -1545,7 +1992,10 @@ static void update_sram_data(struct fg_chip *chip, int *resched_ms)
 	if (!rc)
 		get_current_time(&chip->last_sram_update_time);
 
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 resched:
+#endif
 	if (battid_valid) {
 		complete_all(&chip->batt_id_avail);
 		*resched_ms = fg_sram_update_period_ms;
@@ -1588,6 +2038,11 @@ out:
 
 #define BATT_TEMP_OFFSET	3
 #define BATT_TEMP_CNTRL_MASK	0x17
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+#define BATT_TEMP_ON		0x16
+#define BATT_TEMP_OFF		0x01
+#else
 #define DISABLE_THERM_BIT	BIT(0)
 #define TEMP_SENSE_ALWAYS_BIT	BIT(1)
 #define TEMP_SENSE_CHARGE_BIT	BIT(2)
@@ -1595,6 +2050,7 @@ out:
 #define BATT_TEMP_OFF		DISABLE_THERM_BIT
 #define BATT_TEMP_ON		(FORCE_RBIAS_ON_BIT | TEMP_SENSE_ALWAYS_BIT | \
 				TEMP_SENSE_CHARGE_BIT)
+#endif
 #define TEMP_PERIOD_UPDATE_MS		10000
 #define TEMP_PERIOD_TIMEOUT_MS		3000
 static void update_temp_data(struct work_struct *work)
@@ -1607,8 +2063,11 @@ static void update_temp_data(struct work_struct *work)
 				struct fg_chip,
 				update_temp_work.work);
 
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	if (chip->fg_restarting)
 		goto resched;
+#endif
 
 	fg_stay_awake(&chip->update_temp_wakeup_source);
 	if (chip->sw_rbias_ctrl) {
@@ -1665,12 +2124,19 @@ out:
 		if (rc)
 			pr_err("failed to write BATT_TEMP_OFF rc=%d\n", rc);
 	}
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	fg_relax(&chip->update_temp_wakeup_source);
 
 resched:
+#endif
 	schedule_delayed_work(
 		&chip->update_temp_work,
 		msecs_to_jiffies(TEMP_PERIOD_UPDATE_MS));
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+	fg_relax(&chip->update_temp_wakeup_source);
+#endif
 }
 
 static void update_jeita_setting(struct work_struct *work)
@@ -1703,7 +2169,7 @@ static int fg_set_resume_soc(struct fg_chip *chip, u8 threshold)
 	if (rc)
 		pr_err("write failed rc=%d\n", rc);
 	else
-		pr_debug("setting resume-soc to %x\n", threshold);
+		pr_info("setting resume-soc to %x\n", threshold);
 
 	return rc;
 }
@@ -1720,6 +2186,111 @@ static int fg_get_vbatt_status(struct fg_chip *chip, bool *vbatt_low_sts)
 	return rc;
 }
 
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+#define BATT_CYCLE_NUMBER_REG		0x58C
+#define BATT_CYCLE_OFFSET		3
+static int fg_inc_store_cycle_ctr(struct fg_chip *chip)
+{
+	int rc = 0;
+	u16 cyc_count;
+	u8 reg[2];
+
+	cyc_count = chip->cycle_counter;
+	cyc_count++;
+	reg[0] = cyc_count & 0xFF;
+	reg[1] = cyc_count >> 8;
+	rc = fg_mem_write(chip, reg, BATT_CYCLE_NUMBER_REG, 2,
+			BATT_CYCLE_OFFSET, 0);
+	if (rc)
+		pr_err("failed to write BATT_CYCLE_NUMBER rc=%d\n", rc);
+	else
+		chip->cycle_counter = cyc_count;
+	return rc;
+}
+
+#define CYCLE_CTR_UPDATE_FREQUENCY	2
+static void update_cycle_count(struct work_struct *work)
+{
+	int rc = 0;
+	u8 reg[3];
+	struct fg_chip *chip = container_of(work,
+				struct fg_chip,
+				cycle_count_work);
+
+	chip->cyc_ctr_freq++;
+	if (chip->cyc_ctr_freq % CYCLE_CTR_UPDATE_FREQUENCY) {
+		if (chip->status == POWER_SUPPLY_STATUS_CHARGING) {
+			rc = fg_mem_read(chip, reg, BATTERY_SOC_REG, 3,
+					BATTERY_SOC_OFFSET, 0);
+			if (rc) {
+				pr_err("Failed to read battery soc rc: %d\n",
+					rc);
+				return;
+			}
+
+			/* Check the MSB of battery SOC against the
+			 * Low and High SOC thresholds specified for
+			 * cycle counter algorithm. Since the low and
+			 * high SOC thresholds are already converted
+			 * to the scale of 0-255, they can be used
+			 * as is against the battery SOC.
+			 */
+			mutex_lock(&chip->cyc_ctr_lock);
+			if ((reg[2] < chip->cyc_ctr_low_soc) &&
+					!chip->cyc_ctr_started) {
+				chip->cyc_ctr_started = true;
+			} else if ((reg[2] > chip->cyc_ctr_hi_soc) &&
+					chip->cyc_ctr_started) {
+				rc = fg_inc_store_cycle_ctr(chip);
+				if (rc)
+					pr_err("Error in storing cycle_ctr rc: %d\n",
+						rc);
+				else
+					chip->cyc_ctr_started = false;
+			}
+			mutex_unlock(&chip->cyc_ctr_lock);
+		} else {
+			/* There is a slim chance where the cycle counter
+			 * algorithm might have started and the charger
+			 * got disconnected before the delta SOC interrupt
+			 * had scheduled this work again. Read the battery
+			 * SOC again in such cases to determine whether the
+			 * cycle counter needs to be stored.
+			 */
+			if (chip->cyc_ctr_started) {
+				rc = fg_mem_read(chip, reg, BATTERY_SOC_REG, 3,
+						BATTERY_SOC_OFFSET, 0);
+				if (rc) {
+					pr_err("Failed to read battery soc rc: %d\n",
+						rc);
+					return;
+				}
+				mutex_lock(&chip->cyc_ctr_lock);
+				if (reg[2] > chip->cyc_ctr_hi_soc) {
+					rc = fg_inc_store_cycle_ctr(chip);
+					if (rc)
+						pr_err("Error in storing cycle_ctr rc: %d\n",
+							rc);
+				}
+				chip->cyc_ctr_started = false;
+				mutex_unlock(&chip->cyc_ctr_lock);
+			}
+		}
+	} else {
+		chip->cyc_ctr_freq = 0;
+	}
+}
+
+static int fg_get_cycle_count(struct fg_chip *chip)
+{
+	int cyc_count;
+	mutex_lock(&chip->cyc_ctr_lock);
+	cyc_count = chip->cycle_counter;
+	mutex_unlock(&chip->cyc_ctr_lock);
+	return cyc_count;
+}
+#else
 #define BATT_CYCLE_NUMBER_REG		0x5E8
 #define BATT_CYCLE_OFFSET		0
 static void restore_cycle_counter(struct fg_chip *chip)
@@ -1863,6 +2434,7 @@ static int fg_get_cycle_count(struct fg_chip *chip)
 	mutex_unlock(&chip->cyc_ctr.lock);
 	return count;
 }
+#endif
 
 static void half_float_to_buffer(int64_t uval, u8 *buffer)
 {
@@ -2100,7 +2672,10 @@ static enum power_supply_property fg_power_props[] = {
 	POWER_SUPPLY_PROP_ESR_COUNT,
 	POWER_SUPPLY_PROP_VOLTAGE_MIN,
 	POWER_SUPPLY_PROP_CYCLE_COUNT,
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	POWER_SUPPLY_PROP_CYCLE_COUNT_ID,
+#endif
 };
 
 static int fg_power_get_property(struct power_supply *psy,
@@ -2112,11 +2687,14 @@ static int fg_power_get_property(struct power_supply *psy,
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_BATTERY_TYPE:
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 		if (chip->battery_missing)
 			val->strval = missing_batt_type;
 		else if (chip->fg_restarting)
 			val->strval = loading_batt_type;
 		else
+#endif
 			val->strval = chip->batt_type;
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
@@ -2158,9 +2736,12 @@ static int fg_power_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CYCLE_COUNT:
 		val->intval = fg_get_cycle_count(chip);
 		break;
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	case POWER_SUPPLY_PROP_CYCLE_COUNT_ID:
 		val->intval = chip->cyc_ctr.id;
 		break;
+#endif
 	case POWER_SUPPLY_PROP_RESISTANCE_ID:
 		val->intval = get_sram_prop_now(chip, FG_DATA_BATT_ID);
 		break;
@@ -2418,7 +2999,12 @@ static void fg_cap_learning_save_data(struct fg_chip *chip)
 	int rc;
 	u8 data[2];
 
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+	cc_mah = chip->learning_data.learned_cc_uah / 1000;
+#else
 	cc_mah = div64_s64(chip->learning_data.learned_cc_uah, 1000);
+#endif
 
 	rc = fg_mem_write(chip, (u8 *)&cc_mah, FG_AGING_STORAGE_REG, 2, 0, 0);
 	if (rc)
@@ -2458,6 +3044,16 @@ static void fg_cap_learning_save_data(struct fg_chip *chip)
 
 static void fg_cap_learning_post_process(struct fg_chip *chip)
 {
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+	int max_inc_val, min_dec_val;
+	int64_t old_cap;
+
+	max_inc_val = chip->learning_data.learned_cc_uah
+			* (1000 + chip->learning_data.max_increment) / 1000;
+	min_dec_val = chip->learning_data.learned_cc_uah
+			* (1000 - chip->learning_data.max_decrement) / 1000;
+#else
 	int64_t max_inc_val, min_dec_val, old_cap;
 
 	max_inc_val = chip->learning_data.learned_cc_uah
@@ -2467,6 +3063,7 @@ static void fg_cap_learning_post_process(struct fg_chip *chip)
 	min_dec_val = chip->learning_data.learned_cc_uah
 			* (1000 - chip->learning_data.max_decrement);
 	do_div(min_dec_val, 1000);
+#endif
 
 	old_cap = chip->learning_data.learned_cc_uah;
 	if (chip->learning_data.cc_uah > max_inc_val)
@@ -2544,9 +3141,15 @@ static int fg_cap_learning_check(struct fg_chip *chip)
 		}
 
 		/* set the coulomb counter to a percentage of the capacity */
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+		chip->learning_data.cc_uah = (chip->learning_data.learned_cc_uah
+			* battery_soc) / FULL_PERCENT_3B;
+#else
 		chip->learning_data.cc_uah = div64_s64(
 			(chip->learning_data.learned_cc_uah * battery_soc),
 				FULL_PERCENT_3B);
+#endif
 
 		rc = fg_mem_masked_write(chip, CBITS_INPUT_FILTER_REG,
 				IBATTF_TAU_MASK, IBATTF_TAU_99_S, 0);
@@ -2592,6 +3195,10 @@ static int fg_cap_learning_check(struct fg_chip *chip)
 	}
 
 fail:
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+	chip->learning_data.prev_status = chip->status;
+#endif
 	mutex_unlock(&chip->learning_data.learning_lock);
 	return rc;
 }
@@ -2625,11 +3232,40 @@ static bool is_input_present(struct fg_chip *chip)
 	return is_usb_present(chip) || is_dc_present(chip);
 }
 
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
 static void status_change_work(struct work_struct *work)
 {
 	struct fg_chip *chip = container_of(work,
 				struct fg_chip,
 				status_change_work);
+
+	if (chip->status == POWER_SUPPLY_STATUS_FULL ||
+			chip->status == POWER_SUPPLY_STATUS_CHARGING) {
+		if (!chip->vbat_low_irq_enabled) {
+			enable_irq(chip->batt_irq[VBATT_LOW].irq);
+			enable_irq_wake(chip->batt_irq[VBATT_LOW].irq);
+			chip->vbat_low_irq_enabled = true;
+		}
+		if (get_prop_capacity(chip) == 100)
+			fg_configure_soc(chip);
+	} else if (chip->status == POWER_SUPPLY_STATUS_DISCHARGING) {
+		if (chip->vbat_low_irq_enabled) {
+			disable_irq_wake(chip->batt_irq[VBATT_LOW].irq);
+			disable_irq_nosync(chip->batt_irq[VBATT_LOW].irq);
+			chip->vbat_low_irq_enabled = false;
+		}
+	}
+	fg_cap_learning_check(chip);
+	schedule_work(&chip->update_esr_work);
+}
+#else
+static void status_change_work(struct work_struct *work)
+{
+	struct fg_chip *chip = container_of(work,
+				struct fg_chip,
+				status_change_work);
+
 	unsigned long current_time = 0;
 	int capacity = get_prop_capacity(chip);
 
@@ -2763,6 +3399,7 @@ static int fg_init_batt_temp_state(struct fg_chip *chip)
 
 	return rc;
 }
+#endif
 
 static int fg_power_set_property(struct power_supply *psy,
 				  enum power_supply_property psp,
@@ -2781,9 +3418,13 @@ static int fg_power_set_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_UPDATE_NOW:
 		if (val->intval)
 			update_sram_data(chip, &unused);
+		pr_err("update_sram_data by set property\n");
 		break;
 	case POWER_SUPPLY_PROP_STATUS:
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 		chip->prev_status = chip->status;
+#endif
 		chip->status = val->intval;
 		schedule_work(&chip->status_change_work);
 		break;
@@ -2794,8 +3435,11 @@ static int fg_power_set_property(struct power_supply *psy,
 			schedule_work(&chip->set_resume_soc_work);
 		}
 
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 		if (chip->jeita_hysteresis_support)
 			fg_hysteresis_config(chip);
+#endif
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_DONE:
 		chip->charge_done = val->intval;
@@ -2804,6 +3448,8 @@ static int fg_power_set_property(struct power_supply *psy,
 			schedule_work(&chip->set_resume_soc_work);
 		}
 		break;
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	case POWER_SUPPLY_PROP_CYCLE_COUNT_ID:
 		if ((val->intval > 0) && (val->intval <= BUCKET_COUNT)) {
 			chip->cyc_ctr.id = val->intval;
@@ -2813,6 +3459,7 @@ static int fg_power_set_property(struct power_supply *psy,
 			rc = -EINVAL;
 		}
 		break;
+#endif
 	default:
 		return -EINVAL;
 	};
@@ -2826,7 +3473,10 @@ static int fg_property_is_writeable(struct power_supply *psy,
 	switch (psp) {
 	case POWER_SUPPLY_PROP_COOL_TEMP:
 	case POWER_SUPPLY_PROP_WARM_TEMP:
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	case POWER_SUPPLY_PROP_CYCLE_COUNT_ID:
+#endif
 		return 1;
 	default:
 		break;
@@ -2990,12 +3640,21 @@ static irqreturn_t fg_batt_missing_irq_handler(int irq, void *_chip)
 	if (batt_missing) {
 		chip->battery_missing = true;
 		chip->profile_loaded = false;
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+	chip->batt_type = missing_batt_type;
+	mutex_lock(&chip->cyc_ctr_lock);
+	chip->cycle_counter = 0;
+	chip->cyc_ctr_started = false;
+	mutex_unlock(&chip->cyc_ctr_lock);
+#else
 		chip->batt_type = default_batt_type;
 		mutex_lock(&chip->cyc_ctr.lock);
 		if (fg_debug_mask & FG_IRQS)
 			pr_info("battery missing, clearing cycle counters\n");
 		clear_cycle_counter(chip);
 		mutex_unlock(&chip->cyc_ctr.lock);
+#endif
 	} else {
 		if (!chip->use_otp_profile) {
 			INIT_COMPLETION(chip->batt_id_avail);
@@ -3015,7 +3674,10 @@ static irqreturn_t fg_batt_missing_irq_handler(int irq, void *_chip)
 
 	if (chip->power_supply_registered)
 		power_supply_changed(&chip->bms_psy);
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	complete_all(&chip->first_soc_done);
+#endif
 	return IRQ_HANDLED;
 }
 
@@ -3075,11 +3737,19 @@ static irqreturn_t fg_soc_irq_handler(int irq, void *_chip)
 			chip->rslow_comp.chg_rslow_comp_c1 > 0 &&
 			chip->rslow_comp.chg_rslow_comp_c2 > 0)
 		schedule_work(&chip->rslow_comp_work);
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+	if (chip->cyc_ctr_en)
+#else
 	if (chip->cyc_ctr.en)
+#endif
 		schedule_work(&chip->cycle_count_work);
 	schedule_work(&chip->update_esr_work);
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	if (chip->charge_full)
 		schedule_work(&chip->charge_full_work);
+#endif
 	return IRQ_HANDLED;
 }
 
@@ -3139,10 +3809,67 @@ static void fg_external_power_changed(struct power_supply *psy)
 		fg_stay_awake(&chip->resume_soc_wakeup_source);
 		schedule_work(&chip->set_resume_soc_work);
 	}
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	if (!is_input_present(chip) && chip->charge_full)
 		schedule_work(&chip->charge_full_work);
+#endif
 }
 
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+static void set_resume_soc_work(struct work_struct *work)
+{
+	struct fg_chip *chip = container_of(work,
+				struct fg_chip,
+				set_resume_soc_work);
+	int resume_soc, rc;
+	u8 resume_soc_raw;
+
+	if (is_input_present(chip) && !chip->resume_soc_lowered) {
+		if (!chip->charge_done)
+			goto done;
+		resume_soc = get_prop_capacity(chip)
+			- (100 - settings[FG_MEM_RESUME_SOC].value);
+		if (resume_soc > 0) {
+			resume_soc_raw = soc_to_setpoint(resume_soc);
+			rc = fg_set_resume_soc(chip, resume_soc_raw);
+			if (rc) {
+				pr_err("Couldn't set resume SOC for FG\n");
+				goto done;
+			}
+			if (fg_debug_mask & FG_STATUS) {
+				pr_info("resume soc lowered to %d/%x\n",
+						resume_soc, resume_soc_raw);
+			}
+		} else {
+			pr_info("FG auto recharge threshold not specified in DT\n");
+		}
+		chip->charge_done = false;
+		chip->resume_soc_lowered = true;
+	} else if (chip->resume_soc_lowered && (!is_input_present(chip)
+				|| chip->health == POWER_SUPPLY_HEALTH_GOOD)) {
+		resume_soc = settings[FG_MEM_RESUME_SOC].value;
+		if (resume_soc > 0) {
+			resume_soc_raw = soc_to_setpoint(resume_soc);
+			rc = fg_set_resume_soc(chip, resume_soc_raw);
+			if (rc) {
+				pr_err("Couldn't set resume SOC for FG\n");
+				goto done;
+			}
+			if (fg_debug_mask & FG_STATUS) {
+				pr_info("resume soc set to %d/%x\n",
+						resume_soc, resume_soc_raw);
+			}
+		} else {
+			pr_info("FG auto recharge threshold not specified in DT\n");
+		}
+		chip->resume_soc_lowered = false;
+	}
+done:
+	fg_relax(&chip->resume_soc_wakeup_source);
+}
+#else
 static void set_resume_soc_work(struct work_struct *work)
 {
 	struct fg_chip *chip = container_of(work,
@@ -3191,6 +3918,7 @@ static void set_resume_soc_work(struct work_struct *work)
 done:
 	fg_relax(&chip->resume_soc_wakeup_source);
 }
+#endif
 
 
 #define OCV_COEFFS_START_REG		0x4C0
@@ -3463,12 +4191,21 @@ static void update_cc_cv_setpoint(struct fg_chip *chip)
 static int fg_do_restart(struct fg_chip *chip, bool write_profile)
 {
 	int rc;
-	u8 reg = 0;
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+	int tries = 0;
+#else
 	u8 buf[2];
+#endif
+	u8 reg = 0;
 
+#ifndef VENDOR_EDIT
 	if (fg_debug_mask & FG_STATUS)
+#endif
 		pr_info("restarting fuel gauge...\n");
 
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	chip->fg_restarting = true;
 	/*
 	 * save the temperature if the sw rbias control is active so that there
@@ -3485,6 +4222,7 @@ static int fg_do_restart(struct fg_chip *chip, bool write_profile)
 			goto sub_and_fail;
 		}
 	}
+#endif
 	/*
 	 * release the sram access and configure the correct settings
 	 * before re-requesting access.
@@ -3581,6 +4319,23 @@ static int fg_do_restart(struct fg_chip *chip, bool write_profile)
 	}
 
 	/* wait for the first estimate to complete */
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+	for (tries = 0; tries < MAX_TRIES_FIRST_EST; tries++) {
+		msleep(FIRST_EST_WAIT_MS);
+
+		rc = fg_read(chip, &reg, INT_RT_STS(chip->soc_base), 1);
+		if (rc) {
+			pr_err("spmi read failed: addr=%03X, rc=%d\n",
+					INT_RT_STS(chip->soc_base), rc);
+		}
+		if (reg & FIRST_EST_DONE_BIT)
+			break;
+		else
+			if (fg_debug_mask & FG_STATUS)
+				pr_info("waiting for est, tries = %d\n", tries);
+	}
+#else
 	rc = wait_for_completion_interruptible_timeout(&chip->first_soc_done,
 			msecs_to_jiffies(PROFILE_LOAD_TIMEOUT_MS));
 	if (rc <= 0) {
@@ -3594,6 +4349,7 @@ static int fg_do_restart(struct fg_chip *chip, bool write_profile)
 				INT_RT_STS(chip->soc_base), rc);
 		goto fail;
 	}
+#endif
 	if ((reg & FIRST_EST_DONE_BIT) == 0)
 		pr_err("Battery profile reloading failed, no first estimate\n");
 
@@ -3612,6 +4368,8 @@ static int fg_do_restart(struct fg_chip *chip, bool write_profile)
 		goto fail;
 	}
 
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	/* restore the battery temperature reading here */
 	if (chip->sw_rbias_ctrl) {
 		if (fg_debug_mask & FG_STATUS)
@@ -3627,6 +4385,7 @@ static int fg_do_restart(struct fg_chip *chip, bool write_profile)
 		}
 	}
 	chip->fg_restarting = false;
+#endif
 
 	if (fg_debug_mask & FG_STATUS)
 		pr_info("done!\n");
@@ -3639,7 +4398,10 @@ sub_and_fail:
 	fg_release_access_if_necessary(chip);
 	goto fail;
 fail:
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	chip->fg_restarting = false;
+#endif
 	return -EINVAL;
 }
 
@@ -3653,7 +4415,12 @@ static int fg_batt_profile_init(struct fg_chip *chip)
 	int len;
 	struct device_node *node = chip->spmi->dev.of_node;
 	struct device_node *batt_node, *profile_node;
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+	const char *data, *batt_type_str, *old_batt_type;
+#else
 	const char *data, *batt_type_str;
+#endif
 	bool tried_again = false, vbat_in_range, profiles_same;
 	u8 reg = 0;
 
@@ -3684,7 +4451,13 @@ wait:
 	if (!profile_node) {
 		pr_err("couldn't find profile handle\n");
 		rc = -ENODATA;
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+		old_batt_type = default_batt_type;
+		goto fail;
+#else
 		goto no_profile;
+#endif
 	}
 
 	/* read rslow compensation values if they're available */
@@ -3723,6 +4496,8 @@ wait:
 	if (rc)
 		pr_warn("couldn't find battery max voltage\n");
 
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	/*
 	 * Only configure from profile if fg-cc-cv-threshold-mv is not
 	 * defined in the charger device node.
@@ -3733,6 +4508,7 @@ wait:
 				"qcom,fg-cc-cv-threshold-mv",
 				&chip->cc_cv_threshold_mv);
 	}
+#endif
 
 	data = of_get_property(profile_node, "qcom,fg-profile-data", &len);
 	if (!data) {
@@ -3744,7 +4520,12 @@ wait:
 	if (len != FG_PROFILE_LEN) {
 		pr_err("battery profile incorrect size: %d\n", len);
 		rc = -EINVAL;
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+		goto fail;
+#else
 		goto no_profile;
+#endif
 	}
 
 	rc = of_property_read_string(profile_node, "qcom,battery-type",
@@ -3782,6 +4563,23 @@ wait:
 			< settings[FG_MEM_VBAT_EST_DIFF].value * 1000;
 	profiles_same = memcmp(chip->batt_profile, data,
 					PROFILE_COMPARE_LEN) == 0;
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+	pr_info("last_vbat=%dmV, vbat=%dmV, est=%dmV, reg=%#x, in_range=%d, same_prof=%d, empty=%d\n",
+			fg_data[FG_DATA_CPRED_VOLTAGE].value / 1000,
+			fg_data[FG_DATA_VOLTAGE].value / 1000,
+			settings[FG_MEM_VBAT_EST_DIFF].value,
+			reg, vbat_in_range, profiles_same, fg_is_batt_empty(chip));
+
+	/* do not reset fg if vbat is in range and profile is same */
+	fg_cap_learning_load_data(chip);
+	if (vbat_in_range && profiles_same) {
+		pr_info("Battery profiles same, using default\n");
+		if (fg_est_dump)
+			schedule_work(&chip->dump_sram);
+		goto done;
+	}
+#else
 	if (reg & PROFILE_INTEGRITY_BIT) {
 		fg_cap_learning_load_data(chip);
 		if (vbat_in_range && !fg_is_batt_empty(chip) && profiles_same) {
@@ -3795,6 +4593,7 @@ wait:
 		pr_info("Battery profile not same, clearing cycle counters\n");
 		clear_cycle_counter(chip);
 	}
+#endif
 	if (fg_est_dump)
 		dump_sram(&chip->dump_sram);
 	if ((fg_debug_mask & FG_STATUS) && !vbat_in_range)
@@ -3811,6 +4610,11 @@ wait:
 				DUMP_PREFIX_NONE, 16, 1,
 				chip->batt_profile, len, false);
 	}
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+	old_batt_type = chip->batt_type;
+	chip->batt_type = loading_batt_type;
+#endif
 	if (chip->power_supply_registered)
 		power_supply_changed(&chip->bms_psy);
 
@@ -3826,6 +4630,11 @@ wait:
 	rc = fg_do_restart(chip, true);
 	if (rc) {
 		pr_err("restart failed: %d\n", rc);
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+		goto fail;
+	}
+#else
 		goto no_profile;
 	}
 
@@ -3849,6 +4658,7 @@ wait:
 				pr_info("Battery thermal coefficients changed\n");
 		}
 	}
+#endif
 
 done:
 	if (fg_batt_type)
@@ -3872,9 +4682,18 @@ done:
 	fg_relax(&chip->profile_wakeup_source);
 	pr_info("Battery SOC: %d\n", get_prop_capacity(chip));
 	return rc;
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+fail:
+	chip->batt_type = old_batt_type;
+	if (chip->power_supply_registered)
+		power_supply_changed(&chip->bms_psy);
+no_profile:
+#else
 no_profile:
 	if (chip->power_supply_registered)
 		power_supply_changed(&chip->bms_psy);
+#endif
 	fg_relax(&chip->profile_wakeup_source);
 	return rc;
 }
@@ -3903,6 +4722,14 @@ static void batt_profile_init(struct work_struct *work)
 
 	if (fg_batt_profile_init(chip))
 		pr_err("failed to initialize profile\n");
+#ifdef  VENDOR_EDIT //before battery profile init done,do not allow  soft AICL
+	if (chip->power_supply_registered)
+		{
+		load_battery_profile_done =99;
+		load_battery_profile_done_allow_check_temp_set_current = 88;
+		power_supply_changed(&chip->bms_psy);
+		}
+#endif
 }
 
 static void sysfs_restart_work(struct work_struct *work)
@@ -3920,6 +4747,8 @@ static void sysfs_restart_work(struct work_struct *work)
 	mutex_unlock(&chip->sysfs_restart_lock);
 }
 
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 #define SRAM_MONOTONIC_SOC_REG		0x574
 #define SRAM_MONOTONIC_SOC_OFFSET	2
 #define SRAM_RELEASE_TIMEOUT_MS		500
@@ -3987,6 +4816,7 @@ out:
 	if (disable)
 		chip->charge_full = false;
 }
+#endif
 
 static void update_bcl_thresholds(struct fg_chip *chip)
 {
@@ -4106,13 +4936,18 @@ static int fg_of_init(struct fg_chip *chip)
 	int rc = 0, sense_type, len = 0;
 	const char *data;
 	struct device_node *node = chip->spmi->dev.of_node;
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	u32 temp[2] = {0};
+#endif
 
 	OF_READ_SETTING(FG_MEM_SOFT_HOT, "warm-bat-decidegc", rc, 1);
 	OF_READ_SETTING(FG_MEM_SOFT_COLD, "cool-bat-decidegc", rc, 1);
 	OF_READ_SETTING(FG_MEM_HARD_HOT, "hot-bat-decidegc", rc, 1);
 	OF_READ_SETTING(FG_MEM_HARD_COLD, "cold-bat-decidegc", rc, 1);
 
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	if (of_find_property(node, "qcom,cold-hot-jeita-hysteresis", NULL)) {
 		int hard_hot = 0, soft_hot = 0, hard_cold = 0, soft_cold = 0;
 
@@ -4141,6 +4976,7 @@ static int fg_of_init(struct fg_chip *chip)
 				chip->cold_hysteresis, chip->hot_hysteresis);
 		}
 	}
+#endif
 
 	OF_READ_SETTING(FG_MEM_BCL_LM_THRESHOLD, "bcl-lm-threshold-ma",
 		rc, 1);
@@ -4156,10 +4992,13 @@ static int fg_of_init(struct fg_chip *chip)
 		chip->use_thermal_coefficients = true;
 	}
 	OF_READ_SETTING(FG_MEM_RESUME_SOC, "resume-soc", rc, 1);
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	settings[FG_MEM_RESUME_SOC].value =
 		DIV_ROUND_CLOSEST(settings[FG_MEM_RESUME_SOC].value
 				* FULL_SOC_RAW, FULL_CAPACITY);
 	OF_READ_SETTING(FG_MEM_RESUME_SOC, "resume-soc-raw", rc, 1);
+#endif
 	OF_READ_SETTING(FG_MEM_IRQ_VOLT_EMPTY, "irq-volt-empty-mv", rc, 1);
 	OF_READ_SETTING(FG_MEM_VBAT_EST_DIFF, "vbat-estimate-diff-mv", rc, 1);
 	OF_READ_SETTING(FG_MEM_DELTA_SOC, "fg-delta-soc", rc, 1);
@@ -4203,9 +5042,12 @@ static int fg_of_init(struct fg_chip *chip)
 	chip->use_otp_profile = of_property_read_bool(
 			chip->spmi->dev.of_node,
 			"qcom,use-otp-profile");
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	chip->hold_soc_while_full = of_property_read_bool(
 			chip->spmi->dev.of_node,
 			"qcom,hold-soc-while-full");
+#endif
 
 	sense_type = of_property_read_bool(chip->spmi->dev.of_node,
 					"qcom,ext-sense-type");
@@ -4228,10 +5070,39 @@ static int fg_of_init(struct fg_chip *chip)
 	chip->sw_rbias_ctrl = of_property_read_bool(node,
 				"qcom,sw-rbias-control");
 
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+	chip->cyc_ctr_en = of_property_read_bool(node,
+			"qcom,cycle-counter-en");
+#else
 	chip->cyc_ctr.en = of_property_read_bool(node,
 				"qcom,cycle-counter-en");
+#endif
+
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+	if (chip->cyc_ctr_en) {
+		rc = of_property_read_u32(node, "qcom,cycle-counter-low-soc",
+						&chip->cyc_ctr_low_soc);
+		rc |= of_property_read_u32(node, "qcom,cycle-counter-high-soc",
+						&chip->cyc_ctr_hi_soc);
+		if (rc) {
+			pr_err("Error in reading cycle-counter-low/high soc rc: %d\n",
+				rc);
+			chip->cyc_ctr_en = false;
+		} else if ((chip->cyc_ctr_hi_soc <= 0) ||
+				(chip->cyc_ctr_low_soc <= 0)) {
+			pr_err("Couldn't find valid low/high soc\n");
+			chip->cyc_ctr_en = false;
+		}
+		chip->cyc_ctr_low_soc = soc_to_setpoint(chip->cyc_ctr_low_soc);
+		chip->cyc_ctr_hi_soc = soc_to_setpoint(chip->cyc_ctr_hi_soc);
+		chip->cycle_counter = 0;
+	}
+#else
 	if (chip->cyc_ctr.en)
 		chip->cyc_ctr.id = 1;
+#endif
 
 	return rc;
 }
@@ -4430,11 +5301,19 @@ static void fg_cleanup(struct fg_chip *chip)
 	cancel_work_sync(&chip->update_esr_work);
 	cancel_work_sync(&chip->init_work);
 	cancel_work_sync(&chip->sysfs_restart_work);
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	cancel_work_sync(&chip->charge_full_work);
+#endif
 	power_supply_unregister(&chip->bms_psy);
 	mutex_destroy(&chip->rslow_comp.lock);
 	mutex_destroy(&chip->rw_lock);
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+	mutex_destroy(&chip->cyc_ctr_lock);
+#else
 	mutex_destroy(&chip->cyc_ctr.lock);
+#endif
 	mutex_destroy(&chip->learning_data.learning_lock);
 	mutex_destroy(&chip->sysfs_restart_lock);
 	wakeup_source_trash(&chip->resume_soc_wakeup_source.source);
@@ -4920,16 +5799,29 @@ static int bcl_trim_workaround(struct fg_chip *chip)
 static int fg_common_hw_init(struct fg_chip *chip)
 {
 	int rc;
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+	u8 resume_soc;
+#else
 	int resume_soc_raw;
+#endif
 
 	update_iterm(chip);
 	update_cutoff_voltage(chip);
 	update_irq_volt_empty(chip);
 	update_bcl_thresholds(chip);
 
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+	resume_soc = settings[FG_MEM_RESUME_SOC].value;
+	if (resume_soc > 0) {
+		resume_soc = resume_soc * 255 / 100;
+		rc = fg_set_resume_soc(chip, resume_soc);
+#else
 	resume_soc_raw = settings[FG_MEM_RESUME_SOC].value;
 	if (resume_soc_raw > 0) {
 		rc = fg_set_resume_soc(chip, resume_soc_raw);
+#endif
 		if (rc) {
 			pr_err("Couldn't set resume SOC for FG\n");
 			return rc;
@@ -4985,6 +5877,8 @@ static int fg_common_hw_init(struct fg_chip *chip)
 			THERMAL_COEFF_OFFSET, 0);
 	}
 
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	if (!chip->sw_rbias_ctrl) {
 		rc = fg_mem_masked_write(chip, EXTERNAL_SENSE_SELECT,
 				BATT_TEMP_CNTRL_MASK,
@@ -4995,6 +5889,7 @@ static int fg_common_hw_init(struct fg_chip *chip)
 			return rc;
 		}
 	}
+#endif
 
 	return 0;
 }
@@ -5044,8 +5939,20 @@ static int fg_8994_hw_init(struct fg_chip *chip)
 	data[1] = KI_COEFF_PRED_FULL_4_0_MSB;
 	fg_mem_write(chip, data, KI_COEFF_PRED_FULL_ADDR, 2, 2, 0);
 	/* Read the cycle counter back from FG SRAM */
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+	if (chip->cyc_ctr_en) {
+		rc = fg_mem_read(chip, data, BATT_CYCLE_NUMBER_REG, 2,
+				BATT_CYCLE_OFFSET, 0);
+		if (rc)
+			pr_err("Failed to read BATT_CYCLE_NUMBER rc: %d\n", rc);
+		else
+			chip->cycle_counter = data[0] | data[1] << 8;
+}
+#else
 	if (chip->cyc_ctr.en)
 		restore_cycle_counter(chip);
+#endif
 
 	esr_value = ESR_DEFAULT_VALUE;
 	rc = fg_mem_write(chip, (u8 *)&esr_value, MAXRSCHANGE_REG, 8,
@@ -5053,7 +5960,7 @@ static int fg_8994_hw_init(struct fg_chip *chip)
 	if (rc)
 		pr_err("failed to write default ESR value rc=%d\n", rc);
 	else
-		pr_debug("set default value to esr filter\n");
+		pr_info("set default value to esr filter\n");
 
 	return 0;
 }
@@ -5188,9 +6095,12 @@ static void delayed_init_work(struct work_struct *work)
 	schedule_delayed_work(
 		&chip->update_jeita_setting,
 		msecs_to_jiffies(INIT_JEITA_DELAY_MS));
-
+#ifdef VENDOR_EDIT //yangfangbiao@oneplus.cn modified to save bug:SND-9288,SND-8082
+	//do nothing ,sometimes ,charger will update sram data before schedule_delayed_work ,that cause update_sram_data_work does not work noraml
+#else
 	if (chip->last_sram_update_time == 0)
-		update_sram_data_work(&chip->update_sram_data.work);
+#endif
+	update_sram_data_work(&chip->update_sram_data.work);
 
 	if (chip->last_temp_update_time == 0)
 		update_temp_data(&chip->update_temp_work.work);
@@ -5242,7 +6152,12 @@ static int fg_probe(struct spmi_device *spmi)
 	wakeup_source_init(&chip->resume_soc_wakeup_source.source,
 			"qpnp_fg_set_resume_soc");
 	mutex_init(&chip->rw_lock);
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+	mutex_init(&chip->cyc_ctr_lock);
+#else
 	mutex_init(&chip->cyc_ctr.lock);
+#endif
 	mutex_init(&chip->learning_data.learning_lock);
 	mutex_init(&chip->rslow_comp.lock);
 	mutex_init(&chip->sysfs_restart_lock);
@@ -5261,15 +6176,21 @@ static int fg_probe(struct spmi_device *spmi)
 	INIT_WORK(&chip->set_resume_soc_work, set_resume_soc_work);
 	INIT_WORK(&chip->init_work, delayed_init_work);
 	INIT_WORK(&chip->sysfs_restart_work, sysfs_restart_work);
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	INIT_WORK(&chip->charge_full_work, charge_full_work);
+#endif
 	alarm_init(&chip->fg_cap_learning_alarm, ALARM_BOOTTIME,
 			fg_cap_learning_alarm_cb);
 	init_completion(&chip->sram_access_granted);
 	init_completion(&chip->sram_access_revoked);
 	complete_all(&chip->sram_access_revoked);
 	init_completion(&chip->batt_id_avail);
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	init_completion(&chip->first_soc_done);
 	complete_all(&chip->first_soc_done);
+#endif
 	dev_set_drvdata(&spmi->dev, chip);
 
 	spmi_for_each_container_dev(spmi_resource, spmi) {
@@ -5343,6 +6264,8 @@ static int fg_probe(struct spmi_device *spmi)
 		goto of_init_fail;
 	}
 
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	if (chip->jeita_hysteresis_support) {
 		rc = fg_init_batt_temp_state(chip);
 		if (rc) {
@@ -5350,6 +6273,7 @@ static int fg_probe(struct spmi_device *spmi)
 			goto of_init_fail;
 		}
 	}
+#endif
 
 	reg = 0xFF;
 	rc = fg_write(chip, &reg, INT_EN_CLR(chip->mem_base), 1);
@@ -5396,8 +6320,20 @@ static int fg_probe(struct spmi_device *spmi)
 			goto power_supply_unregister;
 		}
 	}
+#ifdef VENDOR_EDIT
+	#define REDO_BATID_DURING_FIRST_EST	BIT(4)
+			reg = REDO_BATID_DURING_FIRST_EST | RESTART_GO;
+			rc = fg_masked_write(chip, chip->soc_base + SOC_RESTART,
+			reg, reg, 1);
+			pr_info("%s == redetect battery ID rc = %d\n",__func__,rc);
+#endif/* VENDOR_EDIT */
 
 	schedule_work(&chip->init_work);
+
+#ifdef VENDOR_EDIT
+	chip->allow_get_real_fg_soc =false;
+	pr_info("probe success\n");
+#endif
 
 	pr_info("FG Probe success - FG Revision DIG:%d.%d ANA:%d.%d PMIC subtype=%d\n",
 		chip->revision[DIG_MAJOR], chip->revision[DIG_MINOR],
@@ -5424,11 +6360,19 @@ cancel_work:
 	cancel_work_sync(&chip->rslow_comp_work);
 	cancel_work_sync(&chip->init_work);
 	cancel_work_sync(&chip->sysfs_restart_work);
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifndef VENDOR_EDIT
 	cancel_work_sync(&chip->charge_full_work);
+#endif
 of_init_fail:
 	mutex_destroy(&chip->rslow_comp.lock);
 	mutex_destroy(&chip->rw_lock);
+/* david.liu@oneplus.tw,20160111  Rebase the fg driver to 8994L */
+#ifdef VENDOR_EDIT
+	mutex_destroy(&chip->cyc_ctr_lock);
+#else
 	mutex_destroy(&chip->cyc_ctr.lock);
+#endif
 	mutex_destroy(&chip->learning_data.learning_lock);
 	mutex_destroy(&chip->sysfs_restart_lock);
 	wakeup_source_trash(&chip->resume_soc_wakeup_source.source);
@@ -5473,6 +6417,7 @@ static int fg_suspend(struct device *dev)
 {
 	struct fg_chip *chip = dev_get_drvdata(dev);
 
+	get_current_time(&chip->enter_suspend_time);
 	if (!chip->sw_rbias_ctrl)
 		return 0;
 
@@ -5481,10 +6426,28 @@ static int fg_suspend(struct device *dev)
 
 	return 0;
 }
-
+#define ONE_MIN 60 //1min
 static int fg_resume(struct device *dev)
 {
+	unsigned long		reusme_time;
+	unsigned long		suspend_last_time;
+	int					soc;
 	struct fg_chip *chip = dev_get_drvdata(dev);
+#ifdef VENDOR_EDIT //add for sleep long time ,soc not jump
+	chip->allow_get_real_fg_soc =true;//do not calibrate soc
+	soc = get_prop_capacity(chip);
+	chip->allow_get_real_fg_soc =false;
+	if(soc >= 90)
+	soc += 2;
+	get_current_time(&reusme_time);
+	suspend_last_time=reusme_time - chip->enter_suspend_time;
+	if((suspend_last_time >= ONE_MIN) && (chip->soc_pre - soc) >= 1) //sleep time > 1min,calibrate soc set to fg real soc
+	{
+		pr_err("chip->soc_pre=%d,soc=%d,suspend_last_time=%ld\n",chip->soc_pre,soc,suspend_last_time);
+		chip->soc_pre -= 1;
+		backup_soc_ex(chip->soc_pre);
+	}
+#endif
 
 	if (!chip->sw_rbias_ctrl)
 		return 0;

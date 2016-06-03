@@ -162,7 +162,7 @@ static inline s64 timekeeping_get_ns(struct timekeeper *tk)
 {
 	cycle_t cycle_now, cycle_delta;
 	struct clocksource *clock;
-	s64 nsec;
+	u64 nsec;
 
 	/* read clocksource: */
 	clock = tk->clock;
@@ -328,6 +328,15 @@ void getnstimeofday(struct timespec *ts)
 	WARN_ON(__getnstimeofday(ts));
 }
 EXPORT_SYMBOL(getnstimeofday);
+
+void getnstimeofday_no_nsecs(struct timespec *ts)
+{
+	struct timekeeper *tk = &timekeeper;
+	ts->tv_sec = tk->xtime_sec;
+}
+
+EXPORT_SYMBOL(getnstimeofday_no_nsecs);
+
 
 ktime_t ktime_get(void)
 {

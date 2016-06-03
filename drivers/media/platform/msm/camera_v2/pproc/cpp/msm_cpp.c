@@ -228,7 +228,7 @@ static int msm_cpp_update_bandwidth(struct cpp_device *cpp_dev,
 
 	int rc;
 	struct msm_bus_paths *path;
-	cpp_dev->bus_idx = 3 - cpp_dev->bus_idx;
+
 	path = &(msm_cpp_bus_scale_data.usecase[cpp_dev->bus_idx]);
 	path->vectors[0].ab = ab;
 	path->vectors[0].ib = ib;
@@ -239,6 +239,7 @@ static int msm_cpp_update_bandwidth(struct cpp_device *cpp_dev,
 		pr_err("Fail bus scale update %d\n", rc);
 		return -EINVAL;
 	}
+	cpp_dev->bus_idx = 3 - cpp_dev->bus_idx;
 
 	return 0;
 }
@@ -695,6 +696,10 @@ static int cpp_init_mem(struct cpp_device *cpp_dev)
 	int rc = 0;
 
 	kref_init(&cpp_dev->refcount);
+	#ifndef VENDOR_EDIT
+	/*liuyan 2015/7/21 delete, memleak*/
+	//kref_get(&cpp_dev->refcount);
+	#endif
 	cpp_dev->client = msm_ion_client_create("cpp");
 
 	CPP_DBG("E\n");
@@ -1601,20 +1606,18 @@ static void msm_cpp_do_timeout_work(struct work_struct *work)
 	int32_t queue_len = 0;
 	struct msm_device_queue *queue = NULL;
 	struct msm_cpp_frame_info_t *processed_frame[MAX_CPP_PROCESSING_FRAME];
-	struct cpp_device *cpp_dev = cpp_timer.data.cpp_dev;
+	struct cpp_device *cpp_dev;
 
 	pr_info("cpp_timer_callback called. (jiffies=%lu)\n",
 		jiffies);
-	mutex_lock(&cpp_dev->mutex);
-
 	if (!work || cpp_timer.data.cpp_dev->state != CPP_STATE_ACTIVE) {
 		pr_err("Invalid work:%p or state:%d\n", work,
 			cpp_timer.data.cpp_dev->state);
-		goto end;
+		return;
 	}
 	if (!atomic_read(&cpp_timer.used)) {
 		pr_info("Delayed trigger, IRQ serviced\n");
-		goto end;
+		return;
 	}
 
 	disable_irq(cpp_timer.data.cpp_dev->irq->start);
@@ -1631,11 +1634,14 @@ static void msm_cpp_do_timeout_work(struct work_struct *work)
 
 	if (!atomic_read(&cpp_timer.used)) {
 		pr_info("Delayed trigger, IRQ serviced\n");
-		goto end;
+		return;
 	}
 
 	queue = &cpp_timer.data.cpp_dev->processing_q;
 	queue_len = queue->len;
+	cpp_dev = cpp_timer.data.cpp_dev;
+
+	mutex_lock(&cpp_dev->mutex);
 
 	if (cpp_dev->timeout_trial_cnt >=
 		cpp_dev->max_timeout_trial_cnt) {
@@ -1648,7 +1654,9 @@ static void msm_cpp_do_timeout_work(struct work_struct *work)
 		for (i = 0; i < MAX_CPP_PROCESSING_FRAME; i++)
 			cpp_timer.data.processed_frame[i] = NULL;
 		cpp_dev->timeout_trial_cnt = 0;
-		goto end;
+		mutex_unlock(&cpp_dev->mutex);
+		pr_info("exit\n");
+		return;
 	}
 
 	atomic_set(&cpp_timer.used, 1);
@@ -1692,9 +1700,7 @@ static void msm_cpp_do_timeout_work(struct work_struct *work)
 	}
 
 	cpp_timer.data.cpp_dev->timeout_trial_cnt++;
-
-end:
-	mutex_unlock(&cpp_dev->mutex);
+	mutex_unlock(&cpp_timer.data.cpp_dev->mutex);
 
 	pr_info("exit\n");
 	return;
@@ -1936,7 +1942,7 @@ static int msm_cpp_cfg_frame(struct cpp_device *cpp_dev,
 	}
 
 	if (cpp_dev->iommu_state != CPP_IOMMU_STATE_ATTACHED) {
-		pr_info("IOMMU is not attached\n");
+		pr_err("IOMMU is not attached\n");
 		return -EAGAIN;
 	}
 
@@ -1969,7 +1975,7 @@ static int msm_cpp_cfg_frame(struct cpp_device *cpp_dev,
 				&buff_mgr_info);
 			if (rc < 0) {
 				rc = -EAGAIN;
-				pr_debug("%s: error getting buffer rc:%d\n",
+				pr_err("%s: error getting buffer rc:%d\n",
 					__func__, rc);
 				goto frame_msg_err;
 			}
@@ -2015,7 +2021,7 @@ static int msm_cpp_cfg_frame(struct cpp_device *cpp_dev,
 			&dup_buff_mgr_info);
 		if (rc < 0) {
 			rc = -EAGAIN;
-			pr_debug("%s: error getting buffer rc:%d\n",
+			pr_err("%s: error getting buffer rc:%d\n",
 				__func__, rc);
 			goto phyaddr_err;
 		}
@@ -2600,7 +2606,6 @@ STREAM_BUFF_END:
 				pr_err(" Fail to get clock index\n");
 				return -EINVAL;
 			}
-
 			if (cpp_dev->bus_master_flag)
 				rc = msm_cpp_update_bandwidth(cpp_dev,
 					clock_settings.avg,
@@ -3056,8 +3061,7 @@ static long msm_cpp_subdev_fops_compat_ioctl(struct file *file,
 	struct msm_camera_v4l2_ioctl32_t up32_ioctl;
 	struct msm_cpp_clock_settings_t clock_settings;
 	struct msm_pproc_queue_buf_info k_queue_buf;
-	struct msm_cpp_stream_buff_info32_t k32_cpp_buff_info;
-	struct msm_cpp_stream_buff_info_t k64_cpp_buff_info;
+	struct msm_cpp_stream_buff_info_t k_cpp_buff_info;
 	struct msm_cpp_frame_info32_t k32_frame_info;
 	struct msm_cpp_frame_info_t k64_frame_info;
 	void __user *up = (void __user *)arg;
@@ -3197,26 +3201,23 @@ static long msm_cpp_subdev_fops_compat_ioctl(struct file *file,
 	case VIDIOC_MSM_CPP_ENQUEUE_STREAM_BUFF_INFO32:
 	case VIDIOC_MSM_CPP_DELETE_STREAM_BUFF32:
 	{
-		if (kp_ioctl.len != sizeof(
-			struct msm_cpp_stream_buff_info32_t))
-			return -EINVAL;
-		else
-			kp_ioctl.len =
-				sizeof(struct msm_cpp_stream_buff_info_t);
+		struct msm_cpp_stream_buff_info32_t *u32_cpp_buff_info =
+		  (struct msm_cpp_stream_buff_info32_t *)kp_ioctl.ioctl_ptr;
 
-		if (copy_from_user(&k32_cpp_buff_info,
-			(void __user *)kp_ioctl.ioctl_ptr,
-			sizeof(k32_cpp_buff_info))) {
-			pr_err("error: cannot copy user pointer\n");
-			return -EFAULT;
+		k_cpp_buff_info.identity = u32_cpp_buff_info->identity;
+		k_cpp_buff_info.num_buffs = u32_cpp_buff_info->num_buffs;
+		k_cpp_buff_info.buffer_info =
+			compat_ptr(u32_cpp_buff_info->buffer_info);
+
+		kp_ioctl.ioctl_ptr = (void *)&k_cpp_buff_info;
+		if (is_compat_task()) {
+			if (kp_ioctl.len != sizeof(
+				struct msm_cpp_stream_buff_info32_t))
+				return -EINVAL;
+			else
+				kp_ioctl.len =
+				  sizeof(struct msm_cpp_stream_buff_info_t);
 		}
-
-		memset(&k64_cpp_buff_info, 0, sizeof(k64_cpp_buff_info));
-		k64_cpp_buff_info.identity = k32_cpp_buff_info.identity;
-		k64_cpp_buff_info.num_buffs = k32_cpp_buff_info.num_buffs;
-		k64_cpp_buff_info.buffer_info =
-			compat_ptr(k32_cpp_buff_info.buffer_info);
-		kp_ioctl.ioctl_ptr = (void *)&k64_cpp_buff_info;
 		if (cmd == VIDIOC_MSM_CPP_ENQUEUE_STREAM_BUFF_INFO32)
 			cmd = VIDIOC_MSM_CPP_ENQUEUE_STREAM_BUFF_INFO;
 		else if (cmd == VIDIOC_MSM_CPP_DELETE_STREAM_BUFF32)

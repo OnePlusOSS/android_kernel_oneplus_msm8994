@@ -752,7 +752,12 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 			.rate_max = 48000,
 		},
 		.ops = &msm_fe_dai_ops,
+#ifndef VENDOR_EDIT
+        /*zhiguang.su@MultiMedia.AudioDrv on 2015-04-28,changed by Quallcomm patch.*/
 		.name = "QUAT_MI2S_TX_HOSTLESS",
+#else
+		.name = "QUAT_MI2S_HOSTLESS",
+#endif
 		.probe = fe_dai_probe,
 	},
 	{

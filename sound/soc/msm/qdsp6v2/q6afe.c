@@ -2160,7 +2160,12 @@ int afe_loopback(u16 enable, u16 rx_port, u16 tx_port)
 				  sizeof(struct afe_port_param_data_v2);
 
 	lb_cmd.dst_port_id = rx_port;
+#ifndef VENDOR_EDIT
+    /*zhiguang.su@MultiMedia.AudioDrv on 2015-04-28,changed by Qualcomm patch.*/
 	lb_cmd.routing_mode = LB_MODE_DEFAULT;
+#else
+	lb_cmd.routing_mode = LB_MODE_EC_REF_VOICE_AUDIO;
+#endif
 	lb_cmd.enable = (enable ? 1 : 0);
 	lb_cmd.loopback_cfg_minor_version = AFE_API_VERSION_LOOPBACK_CONFIG;
 

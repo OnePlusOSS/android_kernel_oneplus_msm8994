@@ -1242,7 +1242,27 @@ int mdss_mdp_cmd_stop(struct mdss_mdp_ctl *ctl, int panel_power_state)
 	}
 
 	mutex_lock(&ctl->offlock);
-	if (mdss_panel_is_power_off(panel_power_state)) {
+	#ifndef VENDOR_EDIT
+	//add Patch from Qualcomm 2015-04-22 for fix "Display can not power on after receive  a Weixin message in power off state" issue.
+	if (__mdss_mdp_cmd_is_panel_power_on_interactive(ctx)) {
+
+		if (mdss_panel_is_power_on_lp(panel_power_state)) {
+			/*
+			 * If we are transitioning from interactive to low
+			 * power, then we need to send events to the interface
+			 * so that the panel can be configured in low power
+			 * mode.
+			 */
+			send_panel_events = true;
+			if (mdss_panel_is_power_on_ulp(panel_power_state))
+				turn_off_clocks = true;
+		} else if (mdss_panel_is_power_off(panel_power_state)) {
+			send_panel_events = true;
+			turn_off_clocks = true;
+			panel_off = true;
+		}
+	#else
+if (mdss_panel_is_power_off(panel_power_state)) {
 		/* Transition to display off */
 		send_panel_events = true;
 		turn_off_clocks = true;
@@ -1257,6 +1277,7 @@ int mdss_mdp_cmd_stop(struct mdss_mdp_ctl *ctl, int panel_power_state)
 		send_panel_events = true;
 		if (mdss_panel_is_power_on_ulp(panel_power_state))
 			turn_off_clocks = true;
+	#endif
 	} else {
 		/* Transitions between low power and ultra low power */
 		if (mdss_panel_is_power_on_ulp(panel_power_state)) {

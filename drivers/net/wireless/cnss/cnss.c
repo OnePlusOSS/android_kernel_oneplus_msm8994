@@ -49,6 +49,12 @@
 #include <soc/qcom/memory_dump.h>
 #include <net/cnss.h>
 
+//#ifdef VENDOR_EDIT
+#include <linux/project_info.h>
+static u32 fw_version;
+static uint evmFlag = 0;
+//#endif /* VENDOR_EDIT */
+
 #define subsys_to_drv(d) container_of(d, struct cnss_data, subsys_desc)
 
 #define VREG_ON			1
@@ -93,6 +99,12 @@ static struct cnss_fw_files FW_FILES_QCA6174_FW_1_3 = {
 static struct cnss_fw_files FW_FILES_QCA6174_FW_3_0 = {
 "qwlan30.bin", "bdwlan30.bin", "otp30.bin", "utf30.bin",
 "utfbd30.bin", "epping30.bin", "evicted30.bin"};
+//#ifdef VENDOR_EDIT
+/* Only for evm chip */
+static struct cnss_fw_files FW_FILES_QCA6174_FW_3_1 = {
+"qwlan30.bin", "bdwlan31.bin", "otp30.bin", "utf30.bin",
+"utfbd30.bin", "epping30.bin", "evicted30.bin"};
+//#endif /* VENDOR_EDIT */
 static struct cnss_fw_files FW_FILES_DEFAULT = {
 "qwlan.bin", "bdwlan.bin", "otp.bin", "utf.bin",
 "utfbd.bin", "epping.bin", "evicted.bin"};
@@ -811,8 +823,17 @@ void cnss_setup_fw_files(u16 revision)
 	case QCA6174_FW_3_2:
 		strlcpy(penv->fw_files.image_file, "qwlan30.bin",
 			CNSS_MAX_FILE_NAME);
-		strlcpy(penv->fw_files.board_data, "bdwlan30.bin",
-			CNSS_MAX_FILE_NAME);
+		//#ifdef VENDOR_EDIT
+		/* Only for evm chip */
+		if (evmFlag == 1) {
+			pr_info("cnss boarddata 31");
+			strlcpy(penv->fw_files.board_data, "bdwlan31.bin",
+				CNSS_MAX_FILE_NAME);
+		} else {
+			strlcpy(penv->fw_files.board_data, "bdwlan30.bin",
+				CNSS_MAX_FILE_NAME);
+		}
+		//#endif /* VENDOR_EDIT */
 		strlcpy(penv->fw_files.otp_data, "otp30.bin",
 			CNSS_MAX_FILE_NAME);
 		strlcpy(penv->fw_files.utf_file, "utf30.bin",
@@ -866,7 +887,15 @@ int cnss_get_fw_files_for_target(struct cnss_fw_files *pfw_files,
 		break;
 	case AR6320_REV3_VERSION:
 	case AR6320_REV3_2_VERSION:
-		memcpy(pfw_files, &FW_FILES_QCA6174_FW_3_0, sizeof(*pfw_files));
+		//#ifdef VENDOR_EDIT
+                /* Only for evm chip */
+		if (evmFlag == 1) {
+			pr_info("evm FW_FILES_QCA6174_FW_3_1");
+			memcpy(pfw_files, &FW_FILES_QCA6174_FW_3_1, sizeof(*pfw_files));
+		} else {
+			memcpy(pfw_files, &FW_FILES_QCA6174_FW_3_0, sizeof(*pfw_files));
+                }
+		//#endif /* VENDOR_EDIT */
 		break;
 	default:
 		memcpy(pfw_files, &FW_FILES_DEFAULT, sizeof(*pfw_files));
@@ -1186,6 +1215,26 @@ int cnss_get_fw_image(struct image_desc_info *image_desc_info)
 }
 EXPORT_SYMBOL(cnss_get_fw_image);
 
+//#ifdef VENDOR_EDIT
+/* Initial and show wlan firmware build version */
+void cnss_set_fw_version(u32 version) {
+	fw_version = version;
+}
+EXPORT_SYMBOL(cnss_set_fw_version);
+
+static ssize_t cnss_version_information_show(struct device *dev,
+                                             struct device_attribute *attr, char *buf)
+{
+	if (!penv)
+		return -ENODEV;
+	return scnprintf(buf, PAGE_SIZE, "%u.%u.%u.%u\n", (fw_version & 0xf0000000) >> 28,
+		(fw_version & 0xf000000) >> 24, (fw_version & 0xf00000) >> 20, fw_version & 0x7fff);
+}
+
+static DEVICE_ATTR(cnss_version_information, 0444,
+                cnss_version_information_show, NULL);
+//#endif /* VENDOR_EDIT */
+
 static ssize_t wlan_setup_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -1281,6 +1330,15 @@ static int cnss_wlan_pci_probe(struct pci_dev *pdev,
 		goto err_pcie_suspend;
 	}
 
+	//#ifdef VENDOR_EDIT
+	/* Create device file */
+	ret = device_create_file(&penv->pldev->dev, &dev_attr_cnss_version_information);
+	if (ret) {
+		pr_err("Can't Create Device file\n");
+		goto err_pcie_suspend;
+	}
+	//#endif /* VENDOR_EDIT */
+
 	if (cnss_wlan_is_codeswap_supported(penv->revision_id)) {
 		pr_debug("Code-swap not enabled: %d\n", penv->revision_id);
 		goto err_pcie_suspend;
@@ -1330,6 +1388,9 @@ static void cnss_wlan_pci_remove(struct pci_dev *pdev)
 
 	dev = &penv->pldev->dev;
 	device_remove_file(dev, &dev_attr_wlan_setup);
+	//#ifdef VENDOR_EDIT
+	device_remove_file(dev, &dev_attr_cnss_version_information);
+	//#endif /* VENDOR_EDIT */
 }
 
 static int cnss_wlan_pci_suspend(struct device *dev)
@@ -2628,6 +2689,12 @@ skip_ramdump:
 		pr_err("cnss: fw_image_setup sys file creation failed\n");
 		goto err_bus_reg;
 	}
+
+	//#ifdef VENDOR_EDIT
+	/* product information */
+	push_component_info(WCN, "QCA6164A", "QualComm");
+	//#endif /* VENDOR_EDIT */
+
 	pr_info("cnss: Platform driver probed successfully.\n");
 	return ret;
 

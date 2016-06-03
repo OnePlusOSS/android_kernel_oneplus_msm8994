@@ -1,0 +1,9 @@
+#ted_lin@PerfLab add for op gpl helper function support
+config OP_GPL_HELPER
+	default y
+	bool "Oneplus PerfLab herlper, wrapper for exporting GPL SYMBOL"
+
+#ted_lin@PerfLab add for op struct offset helper support
+config OP_STRUCT_OFFSET_HELPER
+	default y
+	bool "Oneplus PerfLab herlper, used for struct member dereference"

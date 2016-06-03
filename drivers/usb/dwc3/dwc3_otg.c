@@ -25,6 +25,60 @@
 #include "debug.h"
 #include "xhci.h"
 
+//add by jiachenghui for otg switch, 2015-11-11
+#ifdef VENDOR_EDIT
+#include <linux/proc_fs.h>
+#include <linux/uaccess.h>
+int otg_switch;
+struct dwc3_otg *gdotg;//add by jch for otg swith retest id,2015-11-11
+#if 0
+ static ssize_t  proc_otg_switch_all_read(struct file *f, char __user *buf,size_t count, loff_t *ppos)
+{
+	char values[] = { '0' + otg_switch, '\n' };
+	printk("OTG: the otg switch is:%d\n",otg_switch);
+	return simple_read_from_buffer(buf, count, ppos, values, sizeof(values));
+
+}
+
+static ssize_t  proc_otg_switch_all_write(struct file *f, const char __user *buf, size_t count, loff_t *ppos)
+{
+	char temp[1] = {0};
+
+	if (copy_from_user(temp, buf, 1))
+		return -EFAULT;
+
+	sscanf(temp, "%d", &otg_switch);
+
+	if (!strncasecmp(&temp[0], "0", 1)) {
+	       printk("OTG: disable!\n");
+		//cancel_delayed_work_sync(&dotg->sm_work);
+	}else if (!strncasecmp(&temp[0], "1", 1)){
+		printk("OTG: enable!\n");
+		//INIT_DELAYED_WORK(&dotg->sm_work, dwc3_otg_sm_work);
+	}
+
+	printk("OTG:write the otg switch to :%d\n",otg_switch);
+	return count;
+}
+
+static const struct file_operations otg_knob_fops = {
+	.open	= simple_open,
+	.read	= proc_otg_switch_all_read,
+	.write	= proc_otg_switch_all_write,
+};
+#endif
+
+static inline int oem_test_id(int nr, const volatile unsigned long *addr)
+{
+	if (0 == otg_switch) {
+		//printk("OTG test id is disable!\n");
+		return 1;
+	} else {
+		return test_bit(nr, addr);
+	}
+}
+#endif
+//end add by jiachenghui for otg switch, 2015-11-11
 #define VBUS_REG_CHECK_DELAY	(msecs_to_jiffies(1000))
 #define MAX_INVALID_CHRGR_RETRY 3
 static int max_chgr_retry_count = MAX_INVALID_CHRGR_RETRY;
@@ -406,35 +460,43 @@ static int dwc3_otg_set_power(struct usb_phy *phy, unsigned mA)
 
 	if (dotg->charger->charging_disabled)
 		return 0;
-
+#ifndef VENDOR_EDIT
 	if (dotg->charger->chg_type != DWC3_INVALID_CHARGER) {
 		dev_dbg(phy->dev,
 			"SKIP setting power supply type again,chg_type = %d\n",
 			dotg->charger->chg_type);
 		goto skip_psy_type;
 	}
-
+#endif
 	if (dotg->charger->chg_type == DWC3_SDP_CHARGER)
 		power_supply_type = POWER_SUPPLY_TYPE_USB;
 	else if (dotg->charger->chg_type == DWC3_CDP_CHARGER)
-		power_supply_type = POWER_SUPPLY_TYPE_USB_CDP;
+#ifdef VENDOR_EDIT
+		power_supply_type = POWER_SUPPLY_TYPE_USB;
 	else if (dotg->charger->chg_type == DWC3_DCP_CHARGER ||
+			dotg->charger->chg_type == DWC3_PROPRIETARY_CHARGER ||
+	        dotg->charger->chg_type == DWC3_FLOATED_CHARGER)
+		power_supply_type = POWER_SUPPLY_TYPE_USB_DCP;
+#else
+        power_supply_type = POWER_SUPPLY_TYPE_USB_CDP;
+else if (dotg->charger->chg_type == DWC3_DCP_CHARGER ||
 			dotg->charger->chg_type == DWC3_PROPRIETARY_CHARGER)
 		power_supply_type = POWER_SUPPLY_TYPE_USB_DCP;
+#endif
 	else
 		power_supply_type = POWER_SUPPLY_TYPE_UNKNOWN;
 
 	power_supply_set_supply_type(dotg->psy, power_supply_type);
-
+#ifndef  VENDOR_EDIT
 skip_psy_type:
-
+#endif
 	if (dotg->charger->chg_type == DWC3_CDP_CHARGER)
 		mA = DWC3_IDEV_CHG_MAX;
 
 	if (dotg->charger->max_power == mA)
 		return 0;
 
-	dev_info(phy->dev, "Avail curr from USB = %u\n", mA);
+	dev_err(phy->dev, "Avail curr from USB = %u\n", mA);
 
 	if (dotg->charger->max_power > 0 && (mA == 0 || mA == 2)) {
 		/* Disable charging */
@@ -523,7 +585,13 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 		}
 
 		/* Switch to A or B-Device according to ID / BSV */
+		//add by jiachenghui for otg switch, 2015-11-11
+		#ifdef VENDOR_EDIT
+		if (!oem_test_id(ID, &dotg->inputs)) {
+		#else
+		//end add by jiachenghui for otg switch, 2015-11-11
 		if (!test_bit(ID, &dotg->inputs)) {
+		#endif//add by jiachenghui for otg switch, 2015-11-11
 			dev_dbg(phy->dev, "!id\n");
 			phy->state = OTG_STATE_A_IDLE;
 			work = 1;
@@ -540,7 +608,13 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 		break;
 
 	case OTG_STATE_B_IDLE:
+		//add by jiachenghui for otg switch, 2015-11-11
+		#ifdef VENDOR_EDIT
+		if (!oem_test_id(ID, &dotg->inputs)) {
+		#else
+		//end add by jiachenghui for otg switch, 2015-11-11
 		if (!test_bit(ID, &dotg->inputs)) {
+		#endif//add by jiachenghui for otg switch, 2015-11-11
 			dev_dbg(phy->dev, "!id\n");
 			phy->state = OTG_STATE_A_IDLE;
 			work = 1;
@@ -564,7 +638,11 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 					dwc3_otg_set_power(phy,
 						dcp_max_current);
 					dbg_event(0xFF, "PROPCHG put", 0);
+			#ifdef VENDOR_EDIT //yangfangbiao@oneplus.cn, 20150613
+			//do nothing ,do not  need to let system suspend
+			#else
 					pm_runtime_put_sync(phy->dev);
+			#endif
 					break;
 				case DWC3_CDP_CHARGER:
 					dwc3_otg_set_power(phy,
@@ -575,6 +653,9 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 					work = 1;
 					break;
 				case DWC3_SDP_CHARGER:
+#ifdef VENDOR_EDIT
+					dwc3_otg_set_power(phy, DWC3_SDP_CHG_MAX);
+#endif
 					dwc3_otg_start_peripheral(&dotg->otg,
 									1);
 					phy->state = OTG_STATE_B_PERIPHERAL;
@@ -595,9 +676,13 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 					 */
 					if (dotg->charger_retry_count ==
 						max_chgr_retry_count) {
+					#ifdef VENDOR_EDIT	//yangfb add to set charge current to  FLOATED_CHARGER ,20150805
+						dwc3_otg_set_power(phy, DWC3_IDEV_CHG_MAX);
+					#else
 						dwc3_otg_set_power(phy, 0);
+					#endif
 						dbg_event(0xFF, "FLCHG put", 0);
-						pm_runtime_put_sync(phy->dev);
+						//pm_runtime_put_sync(phy->dev); ////do nothing ,do not  need to let system suspend
 						break;
 					}
 					charger->start_detection(dotg->charger,
@@ -641,8 +726,15 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 		break;
 
 	case OTG_STATE_B_PERIPHERAL:
+		//add by jiachenghui for otg switch, 2015-11-11
+		#ifdef VENDOR_EDIT
+		if (!test_bit(B_SESS_VLD, &dotg->inputs) ||
+				!oem_test_id(ID, &dotg->inputs)) {
+		#else
+		//end add by jiachenghui for otg switch, 2015-11-11
 		if (!test_bit(B_SESS_VLD, &dotg->inputs) ||
 				!test_bit(ID, &dotg->inputs)) {
+		#endif//add by jiachenghui for otg switch, 2015-11-11
 			dev_dbg(phy->dev, "!id || !bsv\n");
 			dwc3_otg_start_peripheral(&dotg->otg, 0);
 			phy->state = OTG_STATE_B_IDLE;
@@ -658,7 +750,13 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 
 	case OTG_STATE_A_IDLE:
 		/* Switch to A-Device*/
+		//add by jiachenghui for otg switch, 2015-11-11
+		#ifdef VENDOR_EDIT
+		if (oem_test_id(ID, &dotg->inputs)) {
+		#else
+		//end add by jiachenghui for otg switch, 2015-11-11
 		if (test_bit(ID, &dotg->inputs)) {
+		#endif//add by jiachenghui for otg switch, 2015-11-11
 			dev_dbg(phy->dev, "id\n");
 			phy->state = OTG_STATE_B_IDLE;
 			dotg->vbus_retry_count = 0;
@@ -698,7 +796,13 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 		break;
 
 	case OTG_STATE_A_HOST:
+		//add by jiachenghui for otg switch, 2015-11-11
+		#ifdef VENDOR_EDIT
+		if (oem_test_id(ID, &dotg->inputs)) {
+		#else
+		//end add by jiachenghui for otg switch, 2015-11-11
 		if (test_bit(ID, &dotg->inputs)) {
+		#endif//add by jiachenghui for otg switch, 2015-11-11
 			dev_dbg(phy->dev, "id\n");
 			dwc3_otg_start_host(&dotg->otg, 0);
 			phy->state = OTG_STATE_B_IDLE;
@@ -721,15 +825,157 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 		queue_delayed_work(system_nrt_wq, &dotg->sm_work, delay);
 }
 
+//add by jch for otg swith retest id,2015-11-11
+#ifdef VENDOR_EDIT
+
+static void oem_ext_event_notify(struct usb_otg *otg,enum dwc3_ext_events event,enum dwc3_id_state	id)
+{
+	static bool init;
+	struct dwc3_otg *dotg = container_of(otg, struct dwc3_otg, otg);
+	struct dwc3_ext_xceiv *ext_xceiv = dotg->ext_xceiv;
+	struct usb_phy *phy = dotg->otg.phy;
+	int ret = 0;
+
+	/* Flush processing any pending events before handling new ones */
+	if (init)
+		flush_delayed_work(&dotg->sm_work);
+
+	if (event == DWC3_EVENT_PHY_RESUME) {
+		if (!pm_runtime_status_suspended(phy->dev))
+			dev_warn(phy->dev, "PHY_RESUME event out of LPM!!!!\n");
+
+		dev_dbg(phy->dev, "ext PHY_RESUME event received\n");
+		/* ext_xceiver would have taken h/w out of LPM by now */
+		ret = pm_runtime_get(phy->dev);
+		dbg_event(0xFF, "PhyRes get", ret);
+		if (ret == -EACCES) {
+			/* pm_runtime_get may fail during system
+			   resume with -EACCES error */
+			pm_runtime_disable(phy->dev);
+			pm_runtime_set_active(phy->dev);
+			pm_runtime_enable(phy->dev);
+		} else if (ret < 0) {
+			dev_warn(phy->dev, "pm_runtime_get failed!\n");
+		}
+	} else if (event == DWC3_EVENT_XCEIV_STATE) {
+		if (pm_runtime_status_suspended(phy->dev) ||
+			atomic_read(&phy->dev->power.usage_count) == 0) {
+			dev_dbg(phy->dev, "ext XCEIV_STATE while runtime_status=%d\n",
+				phy->dev->power.runtime_status);
+			ret = pm_runtime_get(phy->dev);
+			dbg_event(0xFF, "Xceiv get", ret);
+			if (ret < 0)
+				dev_warn(phy->dev, "pm_runtime_get failed!!\n");
+		}
+		if (id == DWC3_ID_FLOAT) {
+			dev_dbg(phy->dev, "XCVR: ID set\n");
+			set_bit(ID, &dotg->inputs);
+		} else {
+			dev_dbg(phy->dev, "XCVR: ID clear\n");
+			clear_bit(ID, &dotg->inputs);
+		}
+
+		if (ext_xceiv->bsv) {
+			dev_dbg(phy->dev, "XCVR: BSV set\n");
+			set_bit(B_SESS_VLD, &dotg->inputs);
+		} else {
+			dev_dbg(phy->dev, "XCVR: BSV clear\n");
+			clear_bit(B_SESS_VLD, &dotg->inputs);
+		}
+
+		if (!init) {
+			init = true;
+			if (!work_busy(&dotg->sm_work.work))
+				queue_delayed_work(system_nrt_wq,
+							&dotg->sm_work, 0);
+
+			complete(&dotg->dwc3_xcvr_vbus_init);
+			dev_dbg(phy->dev, "XCVR: BSV init complete\n");
+			return;
+		}
+
+		queue_delayed_work(system_nrt_wq, &dotg->sm_work, 0);
+	}
+}
+
+
+void enable_otg_event(bool enable )
+{
+       struct dwc3_ext_xceiv *ext_xceiv = gdotg->ext_xceiv;
+       struct usb_phy *otg_xceiv = gdotg->otg.phy;
+	enum dwc3_id_state id;
+	if(!ext_xceiv->id){
+		if (enable== true) {
+			id = DWC3_ID_GROUND;
+		} else {
+			id = DWC3_ID_FLOAT;
+		}
+
+		if (otg_xceiv)
+			oem_ext_event_notify(otg_xceiv->otg, DWC3_EVENT_XCEIV_STATE,id);
+	}
+}
+ static ssize_t  proc_otg_switch_all_read(struct file *f, char __user *buf,size_t count, loff_t *ppos)
+{
+	char values[] = { '0' + otg_switch, '\n' };
+	printk("OTG: the otg switch is:%d\n",otg_switch);
+	return simple_read_from_buffer(buf, count, ppos, values, sizeof(values));
+
+}
+
+static ssize_t  proc_otg_switch_all_write(struct file *f, const char __user *buf, size_t count, loff_t *ppos)
+{
+	char temp[1] = {0};
+
+	if (copy_from_user(temp, buf, 1))
+		return -EFAULT;
+
+	sscanf(temp, "%d", &otg_switch);
+
+	if (!strncasecmp(&temp[0], "0", 1)) {
+	       printk("OTG: disable!\n");
+		enable_otg_event(false);
+	}else if (!strncasecmp(&temp[0], "1", 1)){
+		printk("OTG: enable!\n");
+		enable_otg_event(true);
+	}
+
+	printk("OTG:write the otg switch to :%d\n",otg_switch);
+	return count;
+}
+
+static const struct file_operations otg_knob_fops = {
+	.open	= simple_open,
+	.read	= proc_otg_switch_all_read,
+	.write	= proc_otg_switch_all_write,
+};
+#endif
+//end add by jch for otg swith retest id,2015-11-11
+
 /**
  * dwc3_otg_init - Initializes otg related registers
  * @dwc: Pointer to out controller context structure
  *
  * Returns 0 on success otherwise negative errno.
  */
+
 int dwc3_otg_init(struct dwc3 *dwc)
 {
 	struct dwc3_otg *dotg;
+
+//add by jiachenghui for otg switch, 2015-11-11
+#ifdef VENDOR_EDIT
+	static struct proc_dir_entry *proc_otg_dir = NULL;
+	otg_switch = 0;
+       proc_otg_dir = proc_mkdir("otg_config", NULL);
+       if (!proc_otg_dir) {
+		printk("OTG:%s: unable to create otg_config directory\n", __func__);
+	 }
+        if (!proc_create("otg_switch", ( S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH ), proc_otg_dir,&otg_knob_fops)){
+		printk(KERN_ERR "OTG: creat otg_switch  fail!\n");
+       }
+#endif
+//end add by jiachenghui for otg switch, 2015-11-11
 
 	dev_dbg(dwc->dev, "dwc3_otg_init\n");
 
@@ -762,6 +1008,12 @@ int dwc3_otg_init(struct dwc3 *dwc)
 
 	init_completion(&dotg->dwc3_xcvr_vbus_init);
 	INIT_DELAYED_WORK(&dotg->sm_work, dwc3_otg_sm_work);
+
+//add by jch for otg swith retest id,2015-11-11
+#ifdef VENDOR_EDIT
+      gdotg = dotg;//add by jch for otg swith retest id,2015-11-11
+#endif
+//end add by jch for otg swith retest id,2015-11-11
 
 	dbg_event(0xFF, "OTGInit get", 0);
 	pm_runtime_get(dwc->dev);
