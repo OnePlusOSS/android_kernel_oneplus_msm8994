@@ -3525,6 +3525,9 @@ static void speedup_synaptics_resume(struct work_struct *work)
 static int synaptics_ts_resume(struct device *dev)
 {
 	int ret;
+	#ifdef VENDOR_EDIT  // shankai@bsp , 2016-6-6,try to  relase all the key when tp resume
+	int i;
+	#endif 
 	struct synaptics_ts_data *ts = dev_get_drvdata(dev);
 
 	TPD_ERR("%s is called\n", __func__);
@@ -3553,8 +3556,29 @@ static int synaptics_ts_resume(struct device *dev)
 	}
 
 	//ts->is_suspended = 0;
+
+#ifdef VENDOR_EDIT  // shankai@bsp , 2016-6-6,try to  relase all the key when tp resume
+	for (i = 0; i < ts->max_num; i++)
+
+	{
+
+		input_mt_slot(ts->input_dev, i);
+
+		input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, 1);
+
+		input_mt_slot(ts->input_dev, i);
+
+		input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, 0);
+
+	}
+#endif
+
+
 #ifndef TYPE_B_PROTOCOL
 	input_mt_sync(ts->input_dev);
+#endif
+#ifdef VENDOR_EDIT  // shankai@bsp , 2016-6-6,try to  relase all the key when tp resume
+	input_report_key(ts->input_dev, BTN_TOOL_FINGER, 0);
 #endif
 	input_sync(ts->input_dev);
 

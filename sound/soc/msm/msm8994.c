@@ -84,8 +84,8 @@ enum pinctrl_pin_state {
 	STATE_AUXPCM_ACTIVE, /* Aux PCM = active, MI2S = sleep */
 	STATE_MI2S_ACTIVE,   /* Aux PCM = sleep, MI2S = active */
 	STATE_ACTIVE,         /* All pins are in active state */
-    STATE_QUA_MI2S_SLEEP,
     STATE_QUA_MI2S_ACTIVE,
+    STATE_QUA_AUX_ACTIVE,
 };
 
 enum mi2s_pcm_mux {
@@ -105,8 +105,8 @@ struct msm_pinctrl_info {
 	struct pinctrl_state *active;
 #ifdef VENDOR_EDIT	
  /* Add by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,for I2S */
-	struct pinctrl_state *qua_mi2s_sleep;
 	struct pinctrl_state *qua_mi2s_active;
+         struct pinctrl_state *qua_aux_active;
 #endif
 	enum pinctrl_pin_state curr_state;
 };
@@ -211,7 +211,7 @@ static const char *const pin_states[] = {"sleep", "auxpcm-active",
 #else
 /* zhiguang.su@MultiMedia.AudioDrv on 2015-06-16,add to avoid debug print crash */
 static const char *const pin_states[] = {"sleep", "auxpcm-active",
-					 "mi2s-active","active","quat_mi2s_sleep","quat_mi2s_active"};
+	                         "mi2s-active","active","quat_mi2s_active","quat_aux_active"};
 #endif
 
 static const char *const spk_function[] = {"Off", "On"};
@@ -1423,21 +1423,21 @@ static int msm_set_pinctrl(struct msm_pinctrl_info *pinctrl_info,
 
 #ifdef VENDOR_EDIT
 	 /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
-		case STATE_QUA_MI2S_SLEEP:
+		case STATE_QUA_MI2S_ACTIVE:
 			ret = pinctrl_select_state(pinctrl_info->pinctrl,
-						   pinctrl_info->qua_mi2s_sleep);
+						   pinctrl_info->qua_mi2s_active);
 			if (ret) {
-				pr_err("%s: AUXPCM state select failed with %d\n",
+				pr_err("%s: QUAT mi2s state select failed with %d\n",
 					__func__, ret);
 				ret = -EIO;
 				goto err;
 			}
 			break;
-	case STATE_QUA_MI2S_ACTIVE:
+	case STATE_QUA_AUX_ACTIVE:
 		ret = pinctrl_select_state(pinctrl_info->pinctrl,
-					   pinctrl_info->qua_mi2s_active);
+					   pinctrl_info->qua_aux_active);
 		if (ret) {
-			pr_err("%s: AUXPCM state select failed with %d\n",
+			pr_err("%s: QUAT AUXPCM state select failed with %d\n",
 				__func__, ret);
 			ret = -EIO;
 			goto err;
@@ -1511,21 +1511,21 @@ static int msm_reset_pinctrl(struct msm_pinctrl_info *pinctrl_info,
 	switch (pinctrl_info->curr_state) {
 #ifdef VENDOR_EDIT
  /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
-	case STATE_QUA_MI2S_SLEEP:
+	case STATE_QUA_MI2S_ACTIVE:
 		ret = pinctrl_select_state(pinctrl_info->pinctrl,
-					   pinctrl_info->qua_mi2s_sleep);
+					   pinctrl_info->qua_mi2s_active);
 		if (ret) {
-			pr_err("%s: AUXPCM state select failed with %d\n",
+			pr_err("%s: quat mi2s state select failed with %d\n",
 				__func__, ret);
 			ret = -EIO;
 			goto err;
 		}
 		break;
-	case STATE_QUA_MI2S_ACTIVE:
+	case STATE_QUA_AUX_ACTIVE:
 		ret = pinctrl_select_state(pinctrl_info->pinctrl,
-					   pinctrl_info->qua_mi2s_active);
+					   pinctrl_info->qua_aux_active);
 		if (ret) {
-			pr_err("%s: AUXPCM state select failed with %d\n",
+			pr_err("%s: quat AUXPCM state select failed with %d\n",
 				__func__, ret);
 			ret = -EIO;
 			goto err;
@@ -1644,18 +1644,18 @@ static int msm_get_pinctrl(struct platform_device *pdev)
 	}
 #ifdef VENDOR_EDIT
  /* add begin by zhiguang.su@MultiMedia.AudioDrv on 2015-03-11,add for enable i2s */
-		pinctrl_info->qua_mi2s_sleep = pinctrl_lookup_state(pinctrl,
-							"quat_mi2s_sleep");
-		if (IS_ERR(pinctrl_info->qua_mi2s_sleep)) {
-			pr_err("%s: could not get active pinstate\n",
+		pinctrl_info->qua_mi2s_active = pinctrl_lookup_state(pinctrl,
+							"quat_mi2s_active");
+		if (IS_ERR(pinctrl_info->qua_mi2s_active)) {
+			pr_err("%s: could not get quat active pinstate\n",
 				__func__);
 			goto err;
 		}
 		
-		pinctrl_info->qua_mi2s_active = pinctrl_lookup_state(pinctrl,
-							"quat_mi2s_active");
-		if (IS_ERR(pinctrl_info->qua_mi2s_active)) {
-			pr_err("%s: could not get active pinstate\n",
+                   pinctrl_info->qua_aux_active = pinctrl_lookup_state(pinctrl,
+							"quat_aux_active");
+		if (IS_ERR(pinctrl_info->qua_aux_active)) {
+			 pr_err("%s: could not get quat aux active pinstate\n",
 				__func__);
 			goto err;
 		}	
@@ -2903,14 +2903,14 @@ static void *def_codec_mbhc_cal(void)
 	btn_low[2] = 78;
 	btn_high[2] = 79;
 	btn_low[3] = 80;
-	btn_high[3] = 275;
-	btn_low[4] = 276;
-	btn_high[4] = 277;
-	btn_low[5] = 278;
-	btn_high[5] = 279;
-	btn_low[6] = 280;
-	btn_high[6] = 281;
-	btn_low[7] = 282;
+	btn_high[3] = 285;
+	btn_low[4] = 286;
+	btn_high[4] = 287;
+	btn_low[5] = 288;
+	btn_high[5] = 289;
+	btn_low[6] = 290;
+	btn_high[6] = 291;
+	btn_low[7] = 292;
 	btn_high[7] = 600; //kjr modify 500 to 600
 	n_ready = wcd9xxx_mbhc_cal_btn_det_mp(btn_cfg, MBHC_BTN_DET_N_READY);
 	n_ready[0] = 80;

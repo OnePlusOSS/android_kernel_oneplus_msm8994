@@ -393,27 +393,12 @@ static void stmvl6180_ps_read_measurement(struct i2c_client *client)
 	input_report_abs(vl6180_data->input_dev_ps, ABS_HAT0X,tv.tv_sec);
 	input_report_abs(vl6180_data->input_dev_ps, ABS_HAT0Y,tv.tv_usec);
 	input_report_abs(vl6180_data->input_dev_ps, ABS_HAT1X,vl6180_data->rangeData.range_mm);
-/*
-  *vl6180_data->ResultBuffer[0]&0x01 == 0x01 means device ready, so send the errorStatus read from laser,
-  *otherwise send 0x01 error code which means the data read from laser is invalide, and the AF algorithm
-  *will ignore the laser data.
-*/
-	if((vl6180_data->ResultBuffer[0]&0x01) == 0x01){
-#ifdef VL6180x_HAVE_RATE_DATA
-		input_report_abs(vl6180_data->input_dev_ps, ABS_HAT2X,vl6180_data->rangeData.signalRate_mcps);
-		input_report_abs(vl6180_data->input_dev_ps, ABS_HAT2Y,vl6180_data->rangeData.rtnAmbRate);
-		input_report_abs(vl6180_data->input_dev_ps, ABS_HAT3X,vl6180_data->rangeData.rtnConvTime);
-#endif
-	}else{
-		CDBG("%s:%d vl6180_data->ResultBuffer[0] %d, will set signalRate_mcps and rtnAmbRate to 0\n", __func__, __LINE__, vl6180_data->ResultBuffer[0]);
-#ifdef VL6180x_HAVE_RATE_DATA
-		input_report_abs(vl6180_data->input_dev_ps, ABS_HAT2X,0);
-		input_report_abs(vl6180_data->input_dev_ps, ABS_HAT2Y,0);
-		input_report_abs(vl6180_data->input_dev_ps, ABS_HAT3X,vl6180_data->rangeData.rtnConvTime);
-#endif
-	}
 	input_report_abs(vl6180_data->input_dev_ps, ABS_HAT1Y,vl6180_data->rangeData.errorStatus);
-
+#ifdef VL6180x_HAVE_RATE_DATA
+	input_report_abs(vl6180_data->input_dev_ps, ABS_HAT2X,vl6180_data->rangeData.signalRate_mcps);
+	input_report_abs(vl6180_data->input_dev_ps, ABS_HAT2Y,vl6180_data->rangeData.rtnAmbRate);
+	input_report_abs(vl6180_data->input_dev_ps, ABS_HAT3X,vl6180_data->rangeData.rtnConvTime);
+#endif
 #if  VL6180x_HAVE_DMAX_RANGING
 	input_report_abs(vl6180_data->input_dev_ps, ABS_HAT3Y,vl6180_data->rangeData.DMax);
 #endif
@@ -451,7 +436,7 @@ static void stmvl6180_work_handler(struct work_struct *work)
 
 #ifdef MULTI_READ
 	ret = stmvl6180_ps_read_result(client);
-	if (ret == 0){
+	if (ret == 0 && ((vl6180_data->ResultBuffer[0]&0x01) == 0x01)){
 		if( vl6180_data->enable_ps_sensor){
 			stmvl6180_ps_parse_result(client);
 			CDBG("stmvl6180_ps_read_measurement\n");

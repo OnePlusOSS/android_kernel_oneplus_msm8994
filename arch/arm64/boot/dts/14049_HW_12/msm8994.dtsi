@@ -2745,8 +2745,8 @@
 				//#ifdef VENDOR_EDIT  
 				/*zhiguang.su@MultiMedia.AudioDrv,changed for quat i2s */
 				"active",
-				"quat_mi2s_sleep",
-				"quat_mi2s_active";
+				"quat_mi2s_active",
+				"quat_aux_active";
 				//#endif
 //#ifdef VENDOR_EDIT 				
 //pinctrl-0 = <&pri_mi2s_sleep>, <&pri_mi2s_sd0_sleep>,
@@ -2768,8 +2768,8 @@
 //#endif				
 //#ifdef VENDOR_EDIT  
 /*zhiguang.su@MultiMedia.AudioDrv changed for quat i2s */
-		pinctrl-4 = <&quat_mi2s_sleep>, <&quat_mi2s_mclk_sleep>, <&quat_mi2s_sd0_sleep> , <&quat_mi2s_sd1_sleep>;
-		pinctrl-5 = <&quat_mi2s_active>, <&quat_mi2s_mclk_active>, <&quat_mi2s_sd0_active> , <&quat_mi2s_sd1_active>;			
+		pinctrl-4 = <&quat_mi2s_active>, <&quat_mi2s_mclk_active>, <&quat_mi2s_sd0_active> , <&quat_mi2s_sd1_active>;
+		pinctrl-5 = <&quat_mi2s_active>, <&quat_mi2s_mclk_active>, <&quat_mi2s_sd0_active> , <&quat_mi2s_sd1_active> ,  <&sec_aux_pcm_active>, <&sec_aux_pcm_din_active>;
 //#endif
 		asoc-platform = <&pcm0>, <&pcm1>, <&pcm2>, <&voip>, <&voice>,
 				<&loopback>, <&compress>, <&hostless>,

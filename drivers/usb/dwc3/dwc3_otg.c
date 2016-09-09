@@ -25,48 +25,9 @@
 #include "debug.h"
 #include "xhci.h"
 
-//add by jiachenghui for otg switch, 2015-11-11
 #ifdef VENDOR_EDIT
-#include <linux/proc_fs.h>
-#include <linux/uaccess.h>
 int otg_switch;
-struct dwc3_otg *gdotg;//add by jch for otg swith retest id,2015-11-11
-#if 0
- static ssize_t  proc_otg_switch_all_read(struct file *f, char __user *buf,size_t count, loff_t *ppos)
-{
-	char values[] = { '0' + otg_switch, '\n' };
-	printk("OTG: the otg switch is:%d\n",otg_switch);
-	return simple_read_from_buffer(buf, count, ppos, values, sizeof(values));
-
-}
-
-static ssize_t  proc_otg_switch_all_write(struct file *f, const char __user *buf, size_t count, loff_t *ppos)
-{
-	char temp[1] = {0};
-
-	if (copy_from_user(temp, buf, 1))
-		return -EFAULT;
-
-	sscanf(temp, "%d", &otg_switch);
-
-	if (!strncasecmp(&temp[0], "0", 1)) {
-	       printk("OTG: disable!\n");
-		//cancel_delayed_work_sync(&dotg->sm_work);
-	}else if (!strncasecmp(&temp[0], "1", 1)){
-		printk("OTG: enable!\n");
-		//INIT_DELAYED_WORK(&dotg->sm_work, dwc3_otg_sm_work);
-	}
-
-	printk("OTG:write the otg switch to :%d\n",otg_switch);
-	return count;
-}
-
-static const struct file_operations otg_knob_fops = {
-	.open	= simple_open,
-	.read	= proc_otg_switch_all_read,
-	.write	= proc_otg_switch_all_write,
-};
-#endif
+struct dwc3_otg *gdotg;
 
 static inline int oem_test_id(int nr, const volatile unsigned long *addr)
 {
@@ -78,7 +39,7 @@ static inline int oem_test_id(int nr, const volatile unsigned long *addr)
 	}
 }
 #endif
-//end add by jiachenghui for otg switch, 2015-11-11
+
 #define VBUS_REG_CHECK_DELAY	(msecs_to_jiffies(1000))
 #define MAX_INVALID_CHRGR_RETRY 3
 static int max_chgr_retry_count = MAX_INVALID_CHRGR_RETRY;
@@ -825,9 +786,8 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 		queue_delayed_work(system_nrt_wq, &dotg->sm_work, delay);
 }
 
-//add by jch for otg swith retest id,2015-11-11
-#ifdef VENDOR_EDIT
 
+#ifdef VENDOR_EDIT
 static void oem_ext_event_notify(struct usb_otg *otg,enum dwc3_ext_events event,enum dwc3_id_state	id)
 {
 	static bool init;
@@ -898,7 +858,6 @@ static void oem_ext_event_notify(struct usb_otg *otg,enum dwc3_ext_events event,
 	}
 }
 
-
 void enable_otg_event(bool enable )
 {
        struct dwc3_ext_xceiv *ext_xceiv = gdotg->ext_xceiv;
@@ -915,42 +874,49 @@ void enable_otg_event(bool enable )
 			oem_ext_event_notify(otg_xceiv->otg, DWC3_EVENT_XCEIV_STATE,id);
 	}
 }
- static ssize_t  proc_otg_switch_all_read(struct file *f, char __user *buf,size_t count, loff_t *ppos)
+
+static int set_otg_switch(const char *val, struct kernel_param *kp)
 {
-	char values[] = { '0' + otg_switch, '\n' };
-	printk("OTG: the otg switch is:%d\n",otg_switch);
-	return simple_read_from_buffer(buf, count, ppos, values, sizeof(values));
 
-}
+	sscanf(val, "%d", &otg_switch);
 
-static ssize_t  proc_otg_switch_all_write(struct file *f, const char __user *buf, size_t count, loff_t *ppos)
-{
-	char temp[1] = {0};
-
-	if (copy_from_user(temp, buf, 1))
-		return -EFAULT;
-
-	sscanf(temp, "%d", &otg_switch);
-
-	if (!strncasecmp(&temp[0], "0", 1)) {
-	       printk("OTG: disable!\n");
-		enable_otg_event(false);
-	}else if (!strncasecmp(&temp[0], "1", 1)){
-		printk("OTG: enable!\n");
-		enable_otg_event(true);
+	if (!strncasecmp(val, "0", 1)) {
+	       printk("OTG: disable! Current id_stat:%d \n", gdotg->ext_xceiv->id);
+			if(gdotg->ext_xceiv->id == DWC3_ID_GROUND)/*If OTG is connected, need to send notify.*/
+				oem_ext_event_notify(gdotg->otg.phy->otg, DWC3_EVENT_XCEIV_STATE,gdotg->ext_xceiv->id);
+	}else if (!strncasecmp(val, "1", 1)){
+		printk("OTG: enable! Current id_stat:%d \n", gdotg->ext_xceiv->id);
+		if(gdotg->ext_xceiv->id == DWC3_ID_GROUND)/*If OTG is connected, need to send notify.*/
+			oem_ext_event_notify(gdotg->otg.phy->otg, DWC3_EVENT_XCEIV_STATE,gdotg->ext_xceiv->id);
 	}
-
 	printk("OTG:write the otg switch to :%d\n",otg_switch);
-	return count;
+	return 0;
 }
 
-static const struct file_operations otg_knob_fops = {
-	.open	= simple_open,
-	.read	= proc_otg_switch_all_read,
-	.write	= proc_otg_switch_all_write,
-};
+static int get_otg_switch(char *buffer, struct kernel_param *kp)
+{
+	int cnt = 0;
+
+	cnt = sprintf(buffer, "%d", otg_switch);
+	printk("OTG: the otg switch is:%d\n",otg_switch);
+
+	return cnt;
+}
+
+module_param_call(otg_switch, set_otg_switch, get_otg_switch, NULL, 0644);
+
+static int get_otg_state(char *buffer, struct kernel_param *kp)
+{
+	int cnt = 0;
+
+	cnt = sprintf(buffer, "%d", !gdotg->ext_xceiv->id);
+	printk("OTG: the otg status is:%d\n",!gdotg->ext_xceiv->id);
+
+	return cnt;
+}
+
+module_param_call(otg_state, NULL, get_otg_state, NULL, 0644);
 #endif
-//end add by jch for otg swith retest id,2015-11-11
 
 /**
  * dwc3_otg_init - Initializes otg related registers
@@ -962,20 +928,6 @@ static const struct file_operations otg_knob_fops = {
 int dwc3_otg_init(struct dwc3 *dwc)
 {
 	struct dwc3_otg *dotg;
-
-//add by jiachenghui for otg switch, 2015-11-11
-#ifdef VENDOR_EDIT
-	static struct proc_dir_entry *proc_otg_dir = NULL;
-	otg_switch = 0;
-       proc_otg_dir = proc_mkdir("otg_config", NULL);
-       if (!proc_otg_dir) {
-		printk("OTG:%s: unable to create otg_config directory\n", __func__);
-	 }
-        if (!proc_create("otg_switch", ( S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH ), proc_otg_dir,&otg_knob_fops)){
-		printk(KERN_ERR "OTG: creat otg_switch  fail!\n");
-       }
-#endif
-//end add by jiachenghui for otg switch, 2015-11-11
 
 	dev_dbg(dwc->dev, "dwc3_otg_init\n");
 

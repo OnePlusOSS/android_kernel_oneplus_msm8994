@@ -91,6 +91,18 @@ static int32_t msm_ois_write_settings(struct msm_ois_ctrl_t *o_ctrl,
 				if (rc < 0)
 					return rc;
 				break;
+#ifdef VENDOR_EDIT // ois burst write
+			case MSM_CAMERA_I2C_SEQ_DATA:
+				o_ctrl->i2c_client.addr_type = settings[i].addr_type;
+				rc = o_ctrl->i2c_client.i2c_func_tbl->
+				i2c_write_seq(&o_ctrl->i2c_client,
+					settings[i].reg_addr,
+					settings[i].reg_data_seq,
+					settings[i].reg_data_seq_size);
+				if (rc < 0)
+					return rc;
+				break;
+#endif
 
 			default:
 				pr_err("Unsupport data type: %d\n",
@@ -221,6 +233,7 @@ static int32_t msm_ois_control(struct msm_ois_ctrl_t *o_ctrl,
 		cci_client->retries = 3;
 		cci_client->id_map = 0;
 		cci_client->cci_i2c_master = o_ctrl->cci_master;
+		cci_client->i2c_freq_mode = set_info->ois_params.i2c_freq_mode;
 	} else {
 		o_ctrl->i2c_client.client->addr =
 			set_info->ois_params.i2c_addr;
@@ -586,6 +599,8 @@ static long msm_ois_subdev_do_ioctl(
 				u32->cfg.set_info.ois_params.setting_size;
 			ois_data.cfg.set_info.ois_params.i2c_addr =
 				u32->cfg.set_info.ois_params.i2c_addr;
+			ois_data.cfg.set_info.ois_params.i2c_freq_mode =
+				u32->cfg.set_info.ois_params.i2c_freq_mode;
 			ois_data.cfg.set_info.ois_params.i2c_addr_type =
 				u32->cfg.set_info.ois_params.i2c_addr_type;
 			ois_data.cfg.set_info.ois_params.i2c_data_type =

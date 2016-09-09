@@ -63,11 +63,11 @@ struct boot_shared_imem_cookie_type
   /* Kmsg buffer size */
   uint32 kmsg_address_size;
 
-  /* kernel version */
-  uint32 kernel_version;
+  /* Device Info Start Address */
+  uint32 device_info_addr;
 
-  /* kernel version length */
-  uint32 kernel_version_len;
+  /* Device Info Size */
+  uint32 device_info_size;
 
   /* Please add new cookie here, do NOT modify or rearrange the existing cookies*/
 };

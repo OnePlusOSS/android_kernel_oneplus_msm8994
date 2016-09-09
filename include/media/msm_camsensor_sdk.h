@@ -82,6 +82,9 @@ enum msm_camera_i2c_data_type {
     //added by zhangxiaowei@camera 20150310 for qcom OIS architecture
 	MSM_CAMERA_I2C_NO_DATA,
    // #endif /*VENDOR_EDIT*/
+#ifdef VENDOR_EDIT // ois burst write
+	MSM_CAMERA_I2C_SEQ_DATA,
+#endif
 	MSM_CAMERA_I2C_DATA_TYPE_MAX,
 };
 

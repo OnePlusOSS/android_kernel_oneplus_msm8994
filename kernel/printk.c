@@ -444,12 +444,14 @@ static void log_store(int facility, int level,
 	struct timespec tspec;
 	struct rtc_time tm;
 	u64 tms_nsec;
+	extern struct timezone sys_tz;
 
 	tms_nsec = local_clock();
 	if(print_wall_time && (tms_nsec > 20)){
 		__getnstimeofday(&tspec);
 		rem_usec = tspec.tv_nsec;
-		tspec.tv_sec += 8*60*60; //Trasfer to Beijing time, UTC + 8
+		/*utc + timezone add by huoyinghui@160425*/
+		tspec.tv_sec -= sys_tz.tz_minuteswest * 60;
 		rtc_time_to_tm(tspec.tv_sec, &tm);
 
 		if ((prevflag & LOG_CONT) && !((flags&0x1f) & LOG_PREFIX))
