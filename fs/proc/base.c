@@ -2824,6 +2824,8 @@ static int proc_pid_personality(struct seq_file *m, struct pid_namespace *ns,
 	return err;
 }
 
+static const struct file_operations proc_sleeptime_operations;
+
 /*
  * Thread groups
  */
@@ -2933,6 +2935,8 @@ static const struct pid_entry tgid_base_stuff[] = {
 #ifdef CONFIG_CHECKPOINT_RESTORE
 	REG("timers",	  S_IRUGO, proc_timers_operations),
 #endif
+	//xianglin add sleep time of the task group leader[RAINS-3040]
+	REG("sleeptime",  S_IRUGO, proc_sleeptime_operations),
 };
 
 static int proc_tgid_base_readdir(struct file * filp,
@@ -3542,3 +3546,51 @@ static const struct file_operations proc_task_operations = {
 	.readdir	= proc_task_readdir,
 	.llseek		= default_llseek,
 };
+
+static ssize_t proc_sleeptime_read(struct file * file, char __user * buf,
+                  size_t count, loff_t *ppos)
+{
+    unsigned long flags;
+    struct inode * inode = file->f_path.dentry->d_inode;
+    struct task_struct *task = get_proc_task(inode);
+    struct timespec rmtp;
+    struct timespec ts;
+    int ret = 0;
+    ssize_t length;
+    char tmpbuf[128];
+
+    if (!task)
+        return -ESRCH;
+
+    getnstimeofday(&ts);
+    raw_spin_lock_irqsave(&task->pi_lock, flags);
+    rmtp = task->group_leader->ttu;
+    ret = timespec_compare(&ts, &rmtp);
+    raw_spin_unlock_irqrestore(&task->pi_lock, flags);
+    /**currrent time compare with the task sleeptime
+       if the current time >= sleeptime
+          we consider the task is wake, so clear the sleeptime
+       otherwise sleeptime sub current time to update the
+       remaining time to wake
+    **/
+    if (ret >= 0) {
+        rmtp.tv_sec = 0;
+        rmtp.tv_nsec = 0;
+        ts.tv_sec = 0;
+        ts.tv_nsec = 0;
+    } else {
+        //follow caculate, the rmpt value can't be change
+        ts = timespec_sub(rmtp, ts);
+    }
+
+    length = scnprintf(tmpbuf, 128, "%ld %ld\n",
+                ts.tv_sec, ts.tv_nsec);
+    put_task_struct(task);
+    return simple_read_from_buffer(buf, count, ppos, tmpbuf, length);
+}
+
+static const struct file_operations proc_sleeptime_operations = {
+    .read       = proc_sleeptime_read,
+    .llseek     = generic_file_llseek,
+};
+

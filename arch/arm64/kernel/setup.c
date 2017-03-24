@@ -92,30 +92,6 @@ static const char *cpu_name;
 static const char *machine_name;
 phys_addr_t __fdt_pointer __initdata;
 
-#ifdef VENDOR_EDIT
-#define MAX_ITEM 3
-#define MAX_LENGTH 64
-
-enum
-{
-        serialno = 0,
-        hw_version,
-        ddr_manufacture_name
-};
-
-char oem_serialno[16];
-char oem_hw_version[3];
-char oem_ddr_manufacture_info[16];
-
-const char cmdline_info[MAX_ITEM][MAX_LENGTH] =
-{
-	"androidboot.serialno=",
-	"androidboot.hw_version=",
-	"androidboot.ddr_manufacture_name=",
-};
-
-#endif /* VENDOR_EDIT */
-
 /*
  * Standard memory resources
  */
@@ -412,35 +388,6 @@ static void __init request_standard_resources(void)
 	}
 }
 
-#ifdef VENDOR_EDIT
-static int __init device_info_init(void)
-{
-	int i, j;
-	char *substr, *target_str;
-
-	for(i=0; i<MAX_ITEM; i++)
-	{
-		substr = strstr(boot_command_line, cmdline_info[i]);
-		if(substr != NULL)
-			substr += strlen(cmdline_info[i]);
-		else
-			continue;
-
-		if(i == serialno)
-			target_str = oem_serialno;
-		else if(i == hw_version)
-			target_str = oem_hw_version;
-		else if(i == ddr_manufacture_name)
-			target_str = oem_ddr_manufacture_info;
-
-		for(j=0; substr[j] != ' '; j++)
-			target_str[j] = substr[j];
-		target_str[j] = '\0';
-	}
-	return 1;
-}
-#endif /* VENDOR_EDIT */
-
 u64 __cpu_logical_map[NR_CPUS] = { [0 ... NR_CPUS-1] = INVALID_HWID };
 
 void __init __weak init_random_pool(void) { }
@@ -495,9 +442,6 @@ void __init setup_arch(char **cmdline_p)
 #endif
 #endif
 	init_random_pool();
-#ifdef VENDOR_EDIT
-	device_info_init();
-#endif /* VENDOR_EDIT */
 }
 
 static int __init arm64_device_init(void)

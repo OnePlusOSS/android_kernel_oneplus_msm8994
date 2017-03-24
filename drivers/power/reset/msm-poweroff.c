@@ -32,10 +32,6 @@
 #include <soc/qcom/restart.h>
 #include <soc/qcom/watchdog.h>
 
-#ifdef VENDOR_EDIT
-#include <linux/param_rw.h>
-#endif /* VENDOR_EDIT */
-
 #define EMERGENCY_DLOAD_MAGIC1    0x322A4F99
 #define EMERGENCY_DLOAD_MAGIC2    0xC67E4350
 #define EMERGENCY_DLOAD_MAGIC3    0x77777777
@@ -48,13 +44,7 @@
 #define SCM_DLOAD_CMD			0x10
 
 #ifdef VENDOR_EDIT
-#define DEVICE_INFO_SIZE 2048
 /*Define a global pointer which points to the boot shared imem cookie structure */
-char oem_pcba_number[28];
-char device_info[DEVICE_INFO_SIZE];
-extern char oem_serialno[16];
-extern char oem_hw_version[3];
-extern char oem_ddr_manufacture_info[16];
 struct boot_shared_imem_cookie_type *boot_shared_imem_cookie_ptr;
 extern phys_addr_t ram_console_address_start;
 extern ssize_t ram_console_address_size;
@@ -134,20 +124,8 @@ static void set_dload_mode(int on)
 		boot_shared_imem_cookie_ptr = (struct boot_shared_imem_cookie_type *) dload_mode_addr;
 		__raw_writel(on ? ram_console_address_start : 0, &(boot_shared_imem_cookie_ptr->kmsg_address_start));
 		__raw_writel(on ? ram_console_address_size : 0, &(boot_shared_imem_cookie_ptr->kmsg_address_size));
-
-        get_param_pcba_number(oem_pcba_number);
-
-		sprintf(device_info,
-		        "hardware version: %s\r\n"
-		        "ddr manufacturer: %s\r\n"
-		        "pcba number: %s\r\n"
-		        "serial number: %s\r\n"
-		        "kernel version: %s\r\n"
-		        "boot command: %s\r\n",
-		        oem_hw_version, oem_ddr_manufacture_info,
-                oem_pcba_number+1, oem_serialno, linux_banner, saved_command_line);
-        __raw_writel(on ? virt_to_phys(device_info) : 0, &(boot_shared_imem_cookie_ptr->device_info_addr));
-		__raw_writel(on ? strlen(device_info) : 0, &(boot_shared_imem_cookie_ptr->device_info_size));
+		__raw_writel(on ? virt_to_phys(linux_banner) : 0, &(boot_shared_imem_cookie_ptr->kernel_version));
+		__raw_writel(on ? strlen(linux_banner) : 0, &(boot_shared_imem_cookie_ptr->kernel_version_len));
 #endif /* VENDOR_EDIT */
 		__raw_writel(on ? 0xE47B337D : 0, dload_mode_addr);
 		__raw_writel(on ? 0xCE14091A : 0,
@@ -493,7 +471,6 @@ static int msm_restart_probe(struct platform_device *pdev)
 		if (!emergency_dload_mode_addr)
 			pr_err("unable to map imem EDLOAD mode offset\n");
 	}
-
 
 #endif
 	np = of_find_compatible_node(NULL, NULL,

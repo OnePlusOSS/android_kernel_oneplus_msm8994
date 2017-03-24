@@ -97,19 +97,6 @@ typedef struct
     //Add value must below here
 }param_misc_t;
 
-typedef struct
-{
-    param_product_desc_head_t sid_head;
-    int is_rooted;
-    int root_time;
-    char flash_0[16]; //the recently flashed partition
-    char flash_1[16]; //the next-recently flashed partition
-    char flash_2[16]; //the third recently flashed partition
-    char erase_0[16]; //the recently erased partition
-    char erase_1[16]; //the next-recently erased partition
-    char erase_2[16]; //the third recently erased partition
-}param_saleinfo_t;
-
 typedef enum {
 	PARAM_SID_PRODUCT = 0,
 	PARAM_SID_CONFIG,
@@ -122,7 +109,6 @@ typedef enum {
 	PARAM_SID_RTC,
 	PARAM_SID_CRASH_RECORD,
 	PARAM_SID_MISC,
-	PARAM_SID_SALEINFO,
 	PARAM_SID_INVALID
 } param_sid_index_t;
 
@@ -138,8 +124,7 @@ static char * sid_name_strs[PARAM_SID_INVALID] = {
 "BATTERY",
 "RTC",
 "CRASH_RECORD",
-"MISC",
-"SALEINFO"
+"MISC"
 };
 #endif
 
@@ -161,7 +146,6 @@ typedef struct
     CHUNK_UNION(rtc);
     CHUNK_UNION(crash_record);
     CHUNK_UNION(misc);
-    CHUNK_UNION(saleinfo);
 }global_param_data_t;
 
 int get_param_camera_laser_sensor_offset(uint * laser_sensor_offset);
@@ -172,7 +156,6 @@ int get_param_gamma_select(uint * gamma_select);
 //#ifdef VENDOR_EDIT
 /* Only for wlan evm chip */
 int get_param_nvm_boarddata(uint * nvm_boarddata_select);
-int get_param_pcba_number(char * pcbe_number);
 //#endif /* VENDOR_EDIT */
 
 #endif

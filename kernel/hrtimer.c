@@ -1658,6 +1658,11 @@ SYSCALL_DEFINE2(nanosleep, struct timespec __user *, rqtp,
 		struct timespec __user *, rmtp)
 {
 	struct timespec tu;
+#ifdef VENDOR_EDIT
+	//xianglin add for [RAINS-3040]
+	struct timespec ctu;
+	struct task_struct *g_leader = current->group_leader;
+#endif
 
 	if (copy_from_user(&tu, rqtp, sizeof(tu)))
 		return -EFAULT;
@@ -1665,6 +1670,15 @@ SYSCALL_DEFINE2(nanosleep, struct timespec __user *, rqtp,
 	if (!timespec_valid(&tu))
 		return -EINVAL;
 
+#ifdef VENDOR_EDIT
+	getnstimeofday(&ctu);
+	ctu = timespec_add(ctu, tu);
+	if (timespec_compare(&ctu, &g_leader->ttu) > 0) {
+		g_leader->ttu.tv_sec = ctu.tv_sec;
+		g_leader->ttu.tv_nsec = ctu.tv_nsec;
+	}
+#endif
+ 
 	return hrtimer_nanosleep(&tu, rmtp, HRTIMER_MODE_REL, CLOCK_MONOTONIC);
 }
 

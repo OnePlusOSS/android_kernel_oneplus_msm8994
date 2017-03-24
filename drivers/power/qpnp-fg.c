@@ -1477,11 +1477,23 @@ static int fg_soc_calibrate(struct fg_chip *di, int soc)
 			}
 		}
 	} else { //not charging
-		if ((abs(soc - di->soc_pre) >  0)) {
-			if ((di->soc_pre == 100 && time_last >= FIVE_MINUTES)
-					|| (di->soc_pre > 95 && time_last >= TWO_POINT_FIVE_MINUTES)
-					|| (di->soc_pre > 60 && time_last >= ONE_MINUTE)
-					|| (time_last > CAPACITY_CALIBRATE_TIME_60_PERCENT)) {
+		if (soc < di->soc_pre) {
+
+			if(di->soc_pre == 100){
+				counter_temp = FIVE_MINUTES;
+			}
+			else if (di->soc_pre > 95){
+				counter_temp = TWO_POINT_FIVE_MINUTES;
+			}
+			else if (di->soc_pre > 60){
+				counter_temp = ONE_MINUTE;
+			}
+			else {
+				counter_temp = CAPACITY_CALIBRATE_TIME_60_PERCENT;
+			}
+
+			if(time_last > counter_temp)
+			{
 				allow_change = true;
 			}
 		}

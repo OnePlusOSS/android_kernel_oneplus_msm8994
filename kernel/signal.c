@@ -1210,6 +1210,25 @@ int do_send_sig_info(int sig, struct siginfo *info, struct task_struct *p,
 {
 	unsigned long flags;
 	int ret = -ESRCH;
+         #ifdef VENDOR_EDIT
+        //huruihuan add for kill task in D status
+        if(sig == SIGKILL){
+            if(p && p->flags & PF_FROZEN){
+                struct task_struct *child = p;
+                rcu_read_lock();
+                do{
+                    child = next_thread(child);
+                    child->kill_flag = 1;
+                    __thaw_task(child);
+                }while(child !=p);
+                rcu_read_unlock();
+            }
+        }
+
+	if(sig == SIGQUIT || SIGSEGV == sig)
+            if(p && p->flags & PF_FROZEN)
+		unfreezer_fork(p);
+        #endif
 
 	if (lock_task_sighand(p, &flags)) {
 		ret = send_signal(sig, info, p, group);

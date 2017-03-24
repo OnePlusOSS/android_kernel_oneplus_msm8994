@@ -43,6 +43,10 @@ struct freezer {
 	struct cgroup_subsys_state	css;
 	unsigned int			state;
 	spinlock_t			lock;
+
+#ifdef VENDOR_EDIT
+	unsigned int oem_freeze_flag;
+#endif
 };
 
 static inline struct freezer *cgroup_freezer(struct cgroup *cgroup)
@@ -332,7 +336,12 @@ static void freeze_cgroup(struct freezer *freezer)
 
 	cgroup_iter_start(cgroup, &it);
 	while ((task = cgroup_iter_next(cgroup, &it)))
-		freeze_task(task);
+	    #ifdef VENDOR_EDIT
+            //huruihuan add for freezing task in cgroup despite of PF_FREEZER_SKIP flag
+                freeze_cgroup_task(task);
+            #else
+	        freeze_task(task);
+            #endif
 	cgroup_iter_end(cgroup, &it);
 }
 
@@ -400,6 +409,9 @@ static void freezer_change_state(struct freezer *freezer, bool freeze)
 	/* update @freezer */
 	spin_lock_irq(&freezer->lock);
 	freezer_apply_state(freezer, freeze, CGROUP_FREEZING_SELF);
+#ifdef VENDOR_EDIT
+	freezer->oem_freeze_flag = freeze ? 1 : 0;
+#endif
 	spin_unlock_irq(&freezer->lock);
 
 	/*
@@ -424,6 +436,74 @@ static void freezer_change_state(struct freezer *freezer, bool freeze)
 	}
 	rcu_read_unlock();
 }
+
+#ifdef VENDOR_EDIT
+static void freezer_apply_state_unmutex(struct freezer *freezer,
+			struct task_struct *task, bool freeze,
+			unsigned int state)
+{
+	bool was_freezing = freezer->state & CGROUP_FREEZING;
+
+	if (!(freezer->state & CGROUP_FREEZER_ONLINE))
+		return;
+
+	freezer->state &= ~state;
+
+	if (!(freezer->state & CGROUP_FREEZING)) {
+                struct task_struct *child = task;
+		if (was_freezing)
+			atomic_dec(&system_freezing_cnt);
+		freezer->state &= ~CGROUP_FROZEN;
+                do{
+                    child = next_thread(child);
+                    __thaw_task(child);
+                }while(child != task);
+	}
+}
+
+static void freezer_change_state_unmutex(struct freezer *freezer,
+			struct task_struct *task, bool freeze)
+{
+	struct cgroup *pos;
+
+	rcu_read_lock();
+	cgroup_for_each_descendant_pre(pos, freezer->css.cgroup) {
+		struct freezer *pos_f = cgroup_freezer(pos);
+		struct freezer *parent = parent_freezer(pos_f);
+
+		/*
+		 * Our update to @parent->state is already visible which is
+		 * all we need.  No need to lock @parent.  For more info on
+		 * synchronization, see freezer_post_create().
+		 */
+		if (pos_f == freezer)
+			freezer_apply_state_unmutex(pos_f, task, freeze,
+					    CGROUP_FREEZING_SELF);
+		else
+			freezer_apply_state_unmutex(pos_f, task,
+					    parent->state & CGROUP_FREEZING,
+					    CGROUP_FREEZING_PARENT);
+	}
+	rcu_read_unlock();
+}
+
+void unfreezer_fork(struct task_struct *task)
+{
+	struct freezer *freezer = NULL;
+
+	rcu_read_lock();
+	freezer = task_freezer(task);
+	rcu_read_unlock();
+
+	/* Only unfreeze the "writed FROZEN" group
+	*/
+	if (freezer->oem_freeze_flag != 1)
+		return;
+
+	pr_debug("%s:%s(%d) try to unfreeze\n", __func__,task->comm, task->pid);
+	freezer_change_state_unmutex(freezer, task, 0);
+}
+#endif
 
 static int freezer_write(struct cgroup *cgroup, struct cftype *cft,
 			 const char *buffer)

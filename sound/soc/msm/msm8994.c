@@ -1411,7 +1411,7 @@ static int msm_set_pinctrl(struct msm_pinctrl_info *pinctrl_info,
 	}
 	curr_state = pinctrl_info->curr_state;
 	pinctrl_info->curr_state |= new_state;
-	pr_debug("%s: curr_state = %s new_state = %s\n", __func__,
+	pr_err("%s: curr_state = %s new_state = %s\n", __func__,
 		 pin_states[curr_state], pin_states[pinctrl_info->curr_state]);
 
 	if (curr_state == pinctrl_info->curr_state) {
@@ -1500,7 +1500,7 @@ static int msm_reset_pinctrl(struct msm_pinctrl_info *pinctrl_info,
 	}
 	curr_state = pinctrl_info->curr_state;
 	pinctrl_info->curr_state &= ~(new_state);
-	pr_debug("%s: curr_state = %s new_state = %s\n", __func__,
+	pr_err("%s: curr_state = %s new_state = %s\n", __func__,
 		 pin_states[curr_state], pin_states[pinctrl_info->curr_state]);
 
 	if (curr_state == pinctrl_info->curr_state) {
@@ -2897,20 +2897,20 @@ static void *def_codec_mbhc_cal(void)
 					       MBHC_BTN_DET_V_BTN_HIGH);
 
 	btn_low[0] = -70;
-	btn_high[0] = 75;
-	btn_low[1] = 76;
-	btn_high[1] = 77;
-	btn_low[2] = 78;
-	btn_high[2] = 79;
-	btn_low[3] = 80;
-	btn_high[3] = 285;
-	btn_low[4] = 286;
-	btn_high[4] = 287;
-	btn_low[5] = 288;
-	btn_high[5] = 289;
-	btn_low[6] = 290;
-	btn_high[6] = 291;
-	btn_low[7] = 292;
+	btn_high[0] = 90;
+	btn_low[1] = 91;
+	btn_high[1] = 92;
+	btn_low[2] = 93;
+	btn_high[2] = 94;
+	btn_low[3] = 95;
+	btn_high[3] = 300;
+	btn_low[4] = 301;
+	btn_high[4] = 302;
+	btn_low[5] = 303;
+	btn_high[5] = 304;
+	btn_low[6] = 305;
+	btn_high[6] = 306;
+	btn_low[7] = 307;
 	btn_high[7] = 600; //kjr modify 500 to 600
 	n_ready = wcd9xxx_mbhc_cal_btn_det_mp(btn_cfg, MBHC_BTN_DET_N_READY);
 	n_ready[0] = 80;

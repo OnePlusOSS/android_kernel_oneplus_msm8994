@@ -1975,7 +1975,7 @@ static int msm_cpp_cfg_frame(struct cpp_device *cpp_dev,
 				&buff_mgr_info);
 			if (rc < 0) {
 				rc = -EAGAIN;
-				pr_err("%s: error getting buffer rc:%d\n",
+				pr_debug("%s: error getting buffer rc:%d\n",
 					__func__, rc);
 				goto frame_msg_err;
 			}

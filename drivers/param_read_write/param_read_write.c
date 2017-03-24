@@ -498,20 +498,4 @@ int get_param_nvm_boarddata(uint * nvm_boarddata_select)
 	return ret;
 }
 EXPORT_SYMBOL(get_param_nvm_boarddata);
-
-int get_param_pcba_number(char *pcba_number_select)
-{
-    int ret;
-    uint32 sid_index= PARAM_SID_PRODUCT;
-    uint32 offset = offsetof(param_product_t, pcba_number);
-
-    param_product_t project_info;
-    ret = get_param_by_index_and_offset(sid_index,offset,pcba_number_select, sizeof(project_info.pcba_number));
-    if(ret < 0){
-        pr_info("%s[%d]  failed\n",__func__, __LINE__);
-        return ret;
-    }
-    return ret;
-}
-EXPORT_SYMBOL(get_param_pcba_number);
 //#endif /* VENDOR_EDIT */

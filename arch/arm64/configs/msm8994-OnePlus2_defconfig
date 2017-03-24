@@ -718,3 +718,5 @@ CONFIG_SET_PMI8994_RESET_TYPE=y
 #ifdef VENDOR_EDIT Bruce Chiu add for /proc/uid_cputime/show_uid_stat and /proc/uid_cputime/remove_uid_range
 CONFIG_UID_CPUTIME=y
 #endif /* VENDOR_EDIT */
+
+CONFIG_INPUT_KEYCHORD=y
